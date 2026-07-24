@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3001;
 const httpServer = createServer(app);
 
 initWebSocket(httpServer).catch(error => {
-  console.error('WebSocket initialization failed:', error);
+  logger.error('WebSocket initialization failed', { error: (error as Error).message });
   process.exit(1);
 });
 

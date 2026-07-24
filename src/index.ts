@@ -120,6 +120,11 @@ validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 
+const betStubMode = process.env.BET_STUB_MODE === "true";
+logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
+  BET_STUB_MODE: betStubMode,
+});
+
 /**
  * Create and configure the Express app without starting any background
  * jobs or binding to a network port. Safe to import in tests.
@@ -225,6 +230,9 @@ export function createApp(): Express {
          status: 'OK',
       });
     });
+
+    // Multi-asset prices via CoinGecko (BTC, ETH, XLM)
+   app.use('/api', pricesRoutes);
 
     // Price Oracle endpoint (returns price_usd as a precise decimal string)
    app.get('/api/price', (req: Request, res: Response) => {
