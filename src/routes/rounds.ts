@@ -4,6 +4,7 @@ import { validate } from '../middleware/validate.middleware';
 import { upDownBetSchema, precisionBetSchema } from '../schemas/bets.schema';
 import config from '../config';
 import roundService from '../services/round.service';
+import hackathonService from '../services/hackathon.service';
 import { toDecimalString } from '../utils/decimal.util';
 
 const router = Router();

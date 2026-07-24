@@ -14,6 +14,7 @@ jest.mock('../config', () => {
   };
 });
 
+import axios from 'axios';
 import priceOracle from '../services/oracle';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
