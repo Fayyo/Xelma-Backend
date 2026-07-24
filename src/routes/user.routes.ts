@@ -3,10 +3,13 @@ import { prisma } from "../lib/prisma";
 import { authenticateUser, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
 import { updateProfileSchema } from "../schemas/user.schema";
-import { unifiedPaginationSchema, UnifiedPaginationParams } from "../schemas/pagination.schema";
+import { unifiedPaginationSchema, UnifiedPaginationParams, encodeCursor } from "../schemas/pagination.schema";
 import { NotFoundError } from "../utils/errors";
+import { validateStellarAddressParam } from "../utils/stellar-address.util";
 import sorobanService from "../services/soroban.service";
 import { toDecimalString } from "../utils/decimal.util";
+import config from "../config";
+import { getMockBetHistory } from "../data/mockData";
 
 const router = Router();
 
@@ -134,19 +137,45 @@ router.get("/stats", authenticateUser, (async (req: AuthenticatedRequest, res: R
 }) as any);
 
 /**
+ * Computes an XP score from on-chain user stats.
+ * XP = totalWins × 100 + bestStreak × 50
+ */
+function computeXp(totalWins: number, bestStreak: number): number {
+  return totalWins * 100 + bestStreak * 50;
+}
+
+/**
+ * Derives a rank title from XP.
+ * Thresholds match hackathon profile expectations.
+ */
+function computeRankTitle(xp: number): string {
+  if (xp >= 10000) return "Diamond";
+  if (xp >= 5000) return "Platinum";
+  if (xp >= 3000) return "Gold";
+  if (xp >= 1500) return "Silver";
+  if (xp >= 500) return "Bronze";
+  return "Rookie";
+}
+
+/**
  * GET /api/user/:address/stats
  * Returns on-chain user stats and pending winnings from the Soroban contract.
  * Public endpoint — no authentication required.
+ *
+ * Response includes a `stats` block (existing consumers) and a `profile` block
+ * with hackathon-friendly fields (balance, xp, rankTitle) for the frontend UI.
  */
 router.get(
   "/:address/stats",
+  validateStellarAddressParam("address"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { address } = req.params;
 
-      const [contractStats, pendingWinnings] = await Promise.all([
+      const [contractStats, pendingWinnings, balance] = await Promise.all([
         sorobanService.getUserStats(address),
         sorobanService.getPendingWinnings(address),
+        sorobanService.getBalance(address),
       ]);
 
       if (!contractStats) {
@@ -160,8 +189,15 @@ router.get(
             pendingWinnings: "0",
             isRegistered: false,
           },
+          profile: {
+            balance: 0,
+            xp: 0,
+            rankTitle: "Rookie",
+          },
         });
       }
+
+      const xp = computeXp(contractStats.total_wins, contractStats.best_streak);
 
       return res.json({
         success: true,
@@ -172,6 +208,11 @@ router.get(
           currentStreak: contractStats.current_streak,
           pendingWinnings: pendingWinnings.toString(),
           isRegistered: contractStats.total_wins > 0 || contractStats.total_losses > 0,
+        },
+        profile: {
+          balance,
+          xp,
+          rankTitle: computeRankTitle(xp),
         },
       });
     } catch (error) {
@@ -286,11 +327,17 @@ router.get(
  */
 router.get(
   "/:address/history",
+  validateStellarAddressParam("address"),
   validate(unifiedPaginationSchema, "query"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { address } = req.params;
       const { limit, offset, cursor } = req.query as unknown as UnifiedPaginationParams;
+
+      // ── In-memory fallback (hackathon mode) ────────────────────────────────────
+      if (config.app.dataStore === "memory") {
+        return handleMockHistory(address, limit, offset, cursor, res);
+      }
 
       // Resolve the user record once — shared by both pagination modes.
       const user = await prisma.user.findUnique({
@@ -410,11 +457,78 @@ function mapPrediction(p: any) {
 }
 
 /**
+ * In-memory fallback for GET /api/user/:address/history when DATA_STORE=memory.
+ * Generates deterministic stub predictions so the frontend can demo the full
+ * user journey without PostgreSQL.
+ */
+function handleMockHistory(
+  address: string,
+  limit: number,
+  offset: number,
+  cursor: string | undefined,
+  res: Response,
+): void {
+  const all = getMockBetHistory(address);
+
+  if (!all.length) {
+    res.json({
+      success: true,
+      data: [],
+      ...(cursor
+        ? { nextCursor: null }
+        : { pagination: { limit, offset, total: 0, totalPages: 0 } }),
+    });
+    return;
+  }
+
+  // Cursor-based pagination
+  if (cursor) {
+    let cursorDate: Date;
+    try {
+      cursorDate = new Date(Buffer.from(cursor, "base64url").toString("utf8"));
+      if (isNaN(cursorDate.getTime())) throw new Error("invalid date");
+    } catch {
+      res.status(400).json({
+        success: false,
+        error: "Invalid cursor. Use the nextCursor value returned by a previous response.",
+      });
+      return;
+    }
+
+    const filtered = all.filter((item) => item.timestamp < cursorDate);
+    const hasNextPage = filtered.length > limit;
+    const page = hasNextPage ? filtered.slice(0, limit) : filtered;
+    const nextCursor = hasNextPage
+      ? encodeCursor(page[page.length - 1].timestamp)
+      : null;
+
+    res.json({ success: true, data: page, nextCursor });
+    return;
+  }
+
+  // Offset-based pagination
+  const page = all.slice(offset, offset + limit);
+  const total = all.length;
+
+  res.json({
+    success: true,
+    data: page,
+    pagination: {
+      limit,
+      offset,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
+}
+
+/**
  * GET /api/user/:walletAddress/public-profile
  * Public profile view for any user
  */
 router.get(
   "/:walletAddress/public-profile",
+  validateStellarAddressParam("walletAddress"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { walletAddress } = req.params;

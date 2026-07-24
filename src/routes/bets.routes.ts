@@ -113,7 +113,7 @@ router.post(
       }
       next(error);
     }
-  },
+  }) as any,
 );
 
 /**
@@ -216,7 +216,7 @@ router.post(
       }
       next(error);
     }
-  },
+  }) as any,
 );
 
 export default router;

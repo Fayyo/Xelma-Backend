@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { getMockRounds, mockLeaderboard } from '../data/mockData';
+import { getMockRounds, getMockLeaderboard } from '../data/mockData';
 import { getPrices, getPriceSnapshot, resetPriceCache } from '../services/priceService';
 
 const COINGECKO_SAMPLE = {
@@ -93,8 +93,8 @@ test('getPriceSnapshot exposes stale metadata for operators', async () => {
   }
 });
 
-test('getMockRounds returns exactly 3 rounds with correct assets and dynamical future timestamps', () => {
-  const rounds = getMockRounds();
+test('getMockRounds returns exactly 3 rounds with correct assets and dynamical future timestamps', async () => {
+  const rounds = await getMockRounds();
   
   // Verify length
   assert.strictEqual(rounds.length, 3);
@@ -126,7 +126,8 @@ test('getMockRounds returns exactly 3 rounds with correct assets and dynamical f
   });
 });
 
-test('mockLeaderboard contains exactly 10 users sorted by rank with valid Stellar-like addresses', () => {
+test('mockLeaderboard contains exactly 10 users sorted by rank with valid Stellar-like addresses', async () => {
+  const mockLeaderboard = await getMockLeaderboard();
   assert.strictEqual(mockLeaderboard.length, 10);
   
   let previousRank = 0;
