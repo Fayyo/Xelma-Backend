@@ -2171,6 +2171,9 @@ npx ts-node src/db/migrate.ts
 # 5. Seed initial mock rounds and user data to Postgres
 npx ts-node src/db/seed.ts
 
+# Optional: seed joinable demo tournaments for /api/tournaments
+npm run db:seed:tournaments
+
 # 6. Start the server
 npm run dev
 ```
@@ -2324,6 +2327,14 @@ curl "http://localhost:3001/api/leaderboard?limit=10&offset=0"
 ```bash
 curl "http://localhost:3001/api/tournaments?limit=10&offset=0"
 ```
+
+For a fresh local database with joinable demo tournaments, run:
+
+```bash
+npm run db:seed:tournaments
+```
+
+The seed is idempotent and upserts three stable tournament IDs covering `ACTIVE`, `UPCOMING`, and `COMPLETED` statuses across both `UP_DOWN` and `LEGENDS` modes.
 
 #### Get Tournament Detail
 
