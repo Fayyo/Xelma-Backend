@@ -517,6 +517,12 @@ To include Redis (for Socket.IO adapter / distributed locks):
 docker compose --profile full up --build
 ```
 
+To run the **hackathon mode** (no database required, mock data only):
+
+```bash
+docker compose --profile hackathon up
+```
+
 **Troubleshooting Docker setup**
 
 | Symptom | Fix |
