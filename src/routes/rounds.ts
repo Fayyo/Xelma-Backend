@@ -49,8 +49,10 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
         };
         return res.json({
           success: true,
+          data: payload,
           source: payload.source,
           rounds: payload.rounds,
+          payload,
         });
       } catch (err) {
         logger.warn('Soroban fetch failed; falling back to mock rounds', {
@@ -62,8 +64,10 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     const { source, rounds } = await roundService.getRoundsForApi();
     return res.json({
       success: true,
+      data: { source, rounds },
       source,
       rounds,
+      payload: { source, rounds },
     });
   } catch (err) {
     next(err);
