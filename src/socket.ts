@@ -1,17 +1,31 @@
-import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { verifyToken, verifyTokenDetailed } from './utils/jwt.util';
 import { prisma } from './lib/prisma';
 import websocketService from './services/websocket.service';
 import chatService from './services/chat.service';
 import multiplayerSessionService from './services/multiplayer-session.service';
-import { ChatMessage } from './types/chat.types';
 import logger from './utils/logger';
 import { initializeSocketAdapter } from './utils/socket-adapter';
 import {
    setSocketConnectionsActive,
    websocketConnectionEventsTotal,
 } from './metrics/application.metrics';
+import type {
+   TypedServer,
+   TypedSocket,
+   ServerToClientEvents,
+   ClientToServerEvents,
+   ServerHelloPayload,
+   AuthErrorPayload,
+   RoomEventPayload,
+   GenericErrorPayload,
+   ResumePayload,
+   ChatSendPayload,
+   ChatAckPayload,
+   SessionCheckpointPayload,
+} from './types/socket-events';
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -47,26 +61,13 @@ export function getCorsOrigins(): string | string[] {
    return clientUrl;
 }
 
-// Extended socket interface with user data
-interface AuthenticatedSocket extends Socket {
+// Extended socket with walletAddress attached directly alongside SocketData
+interface AuthenticatedSocket extends TypedSocket {
    userId?: string;
    walletAddress?: string;
    /** Unix epoch (ms) at which the JWT expires. */
    tokenExpiresAt?: number;
 }
-
-// Standardized ack payloads for chat:send
-type ChatAck =
-   | { ok: true; message: ChatMessage }
-   | {
-        ok: false;
-        error: string;
-        code:
-           | 'AUTH_REQUIRED'
-           | 'INVALID_CONTENT'
-           | 'RATE_LIMITED'
-           | 'SEND_FAILED';
-     };
 
 /**
  * In-memory sliding-window rate limiter for WebSocket events.
@@ -246,12 +247,13 @@ export function checkExpiredTokenSockets(
 
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-         socket.emit('auth:error', {
+         const authErrorPayload: AuthErrorPayload = {
             code: AUTH_TOKEN_EXPIRED,
             message:
                'Your session token has expired. ' +
                'Refresh your access token and reconnect.',
-         });
+         };
+         socket.emit('auth:error', authErrorPayload);
          socket.disconnect(false);
       } else {
          connectionRegistry.delete(socketId);
@@ -299,10 +301,15 @@ export function checkExpiredTokenSockets(
  */
 export async function initializeSocket(
    httpServer: HTTPServer
-): Promise<SocketIOServer> {
+): Promise<TypedServer> {
    const corsOrigins = getCorsOrigins();
 
-   const io = new SocketIOServer(httpServer, {
+   const io = new SocketIOServer<
+      ClientToServerEvents,
+      ServerToClientEvents,
+      DefaultEventsMap,
+      import('./types/socket-events').SocketData
+   >(httpServer, {
       pingInterval: PING_INTERVAL,
       pingTimeout: PING_TIMEOUT,
       cors: {
@@ -418,13 +425,14 @@ export async function initializeSocket(
 
       // Announce the heartbeat contract so clients can tune their reconnect
       // logic. On reconnect, clients must re-join rooms explicitly.
-      socket.emit('server:hello', {
+      const helloPayload: ServerHelloPayload = {
          socketId: socket.id,
          pingInterval: PING_INTERVAL,
          pingTimeout: PING_TIMEOUT,
          authenticated: !!socket.userId,
          userId: socket.userId,
-      });
+      };
+      socket.emit('server:hello', helloPayload);
 
       // Refresh lastSeenAt on any incoming application-level event.
       socket.onAny(() => {
@@ -465,7 +473,7 @@ export async function initializeSocket(
                for (const room of resume.rooms) {
                   socket.join(room);
                }
-               socket.emit('session:resume', resume);
+               socket.emit('session:resume', resume as ResumePayload);
             })
             .catch(err => {
                logger.warn(
@@ -486,7 +494,8 @@ export async function initializeSocket(
          const room = roundId ? `round:${roundId}` : 'round';
          socket.join(room);
          logger.info(`Socket ${socket.id} joined room: ${room}`);
-         socket.emit('room:joined', { room });
+         const joinedPayload: RoomEventPayload = { room };
+         socket.emit('room:joined', joinedPayload);
          if (socket.userId) {
             void multiplayerSessionService.addRoom(socket.userId, room);
          }
@@ -502,25 +511,28 @@ export async function initializeSocket(
          }
 
          const room = roundId ? `round:${roundId}` : 'round';
-         socket.leave(room);
-         logger.info(`Socket ${socket.id} left room: ${room}`);
-         socket.emit('room:left', { room });
-         if (socket.userId) {
-            void multiplayerSessionService.removeRoom(socket.userId, room);
-         }
-      });
+          socket.leave(room);
+          logger.info(`Socket ${socket.id} left room: ${room}`);
+          const leftPayload: RoomEventPayload = { room };
+          socket.emit('room:left', leftPayload);
+          if (socket.userId) {
+             void multiplayerSessionService.removeRoom(socket.userId, room);
+          }
+       });
 
       // Join chat room (requires authentication)
       socket.on('join:chat', () => {
          if (!socket.userId) {
-            socket.emit('error', {
+            const errPayload: GenericErrorPayload = {
                message: 'Authentication required to join chat',
-            });
+            };
+            socket.emit('error', errPayload);
             return;
          }
          socket.join('chat');
          logger.info(`Socket ${socket.id} joined room: chat`);
-         socket.emit('room:joined', { room: 'chat' });
+         const joinedChat: RoomEventPayload = { room: 'chat' };
+         socket.emit('room:joined', joinedChat);
          void multiplayerSessionService.addRoom(socket.userId, 'chat');
       });
 
@@ -528,7 +540,8 @@ export async function initializeSocket(
       socket.on('leave:chat', () => {
          socket.leave('chat');
          logger.info(`Socket ${socket.id} left room: chat`);
-         socket.emit('room:left', { room: 'chat' });
+         const leftChat: RoomEventPayload = { room: 'chat' };
+         socket.emit('room:left', leftChat);
          if (socket.userId) {
             void multiplayerSessionService.removeRoom(socket.userId, 'chat');
          }
@@ -538,10 +551,10 @@ export async function initializeSocket(
       socket.on(
          'chat:send',
          async (
-            data: { content: string },
-            callback?: (ack: ChatAck) => void
+            data: ChatSendPayload,
+            callback?: (ack: ChatAckPayload) => void
          ) => {
-            const ack = (payload: ChatAck): void => {
+            const ack = (payload: ChatAckPayload): void => {
                if (typeof callback === 'function') callback(payload);
             };
 
@@ -608,13 +621,15 @@ export async function initializeSocket(
       // Join user notification room (for authenticated users)
       socket.on('join:notifications', () => {
          if (!socket.userId) {
-            socket.emit('error', {
+            const errPayload: GenericErrorPayload = {
                message: 'Authentication required for notifications',
-            });
+            };
+            socket.emit('error', errPayload);
             return;
          }
          socket.join(`user:${socket.userId}`);
-         socket.emit('room:joined', { room: 'notifications' });
+         const joinedNotif: RoomEventPayload = { room: 'notifications' };
+         socket.emit('room:joined', joinedNotif);
          void multiplayerSessionService.addRoom(
             socket.userId,
             `user:${socket.userId}`
@@ -623,7 +638,7 @@ export async function initializeSocket(
 
       // Issue #194: clients can checkpoint opaque session metadata
       // (e.g. last-viewed round, draft message) so it survives a reconnect.
-      socket.on('session:checkpoint', (patch: Record<string, unknown>) => {
+      socket.on('session:checkpoint', (patch: SessionCheckpointPayload) => {
          if (!socket.userId) return;
          if (!patch || typeof patch !== 'object' || Array.isArray(patch))
             return;
