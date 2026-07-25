@@ -3,9 +3,12 @@ import { createServer } from 'http';
 
 dotenv.config();
 
+import { assertPreflightOrExit } from './config/preflight';
 import app from './app';
 import { initWebSocket } from './socket';
 import logger from './utils/logger';
+
+assertPreflightOrExit();
 
 const PORT = process.env.PORT || 3001;
 const httpServer = createServer(app);
