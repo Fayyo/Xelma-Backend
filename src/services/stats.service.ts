@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { MOCK_PLATFORM_STATS } from "../data/mockData";
+import logger from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,7 +67,9 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     } catch (err) {
         // DB unreachable (connection error, migration pending, etc.)
         dbAvailable = false;
-        console.error("[stats.service] DB query failed, using mock fallback:", err);
+        logger.error("[stats.service] DB query failed, using mock fallback:", {
+          error: err instanceof Error ? err.message : String(err),
+        });
     }
 
     // 3. Decide whether to use live or mock data

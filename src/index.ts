@@ -1,9 +1,9 @@
 // Enforce Node.js 22+ runtime requirement at startup before loading any modules
 const nodeMajorVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajorVersion < 22) {
-  console.error(`🔥 CRITICAL ERROR: Application startup failed.`);
-  console.error(`Node.js v22.x or higher is required. You are running v${process.version}.`);
-  console.error(`Please upgrade Node.js to avoid local vs Render mismatches.`);
+  logger.error("Application startup failed: Node.js v22.x or higher is required", {
+    nodeVersion: process.version,
+  });
   process.exit(1);
 }
 
@@ -37,6 +37,7 @@ import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
 import corsDiagnosticsRoutes from './routes/admin-cors-diagnostics.routes';
 import deadLetterRoutes from './routes/admin-dead-letter.routes';
+import betAuditRoutes from './routes/admin-bet-audit.routes';
 import healthRoutes from './routes/health';
 import chatRoutes from './routes/chat.routes';
 import tournamentsRoutes from './routes/tournaments.routes';
@@ -77,14 +78,13 @@ function securityHeaders(
 }
 
 const validateEnv = (): void => {
-   if (!process.env.JWT_SECRET) {
-      console.error('🔥 CRITICAL ERROR: Application startup failed.');
-      console.error('Missing required environment variable: JWT_SECRET');
-      console.error(
-         'Please configure this securely in your environment before starting the app.'
-      );
-      process.exit(1); // 1 indicates a failure/error state
-   }
+    if (!process.env.JWT_SECRET) {
+       logger.error("Application startup failed: Missing required environment variable: JWT_SECRET", {
+         variable: "JWT_SECRET",
+       });
+       logger.error("Please configure this securely in your environment before starting the app.");
+       process.exit(1); // 1 indicates a failure/error state
+    }
 };
 
 /**
@@ -177,7 +177,8 @@ export function createApp(): Express {
     app.use('/api/errors', errorsRoutes);
     app.use('/api/admin/cors-diagnostics', corsDiagnosticsRoutes);
      app.use('/api/admin/dead-letter', deadLetterRoutes);
-     app.use('/health', healthRoutes);
+     app.use('/api/admin/bet-audit', betAuditRoutes);
+      app.use('/health', healthRoutes);
 
      // Versioned API v1 router (same routes, under /api/v1 prefix)
     const v1Router = Router();
@@ -194,8 +195,9 @@ export function createApp(): Express {
     v1Router.use('/admin/metrics', adminMetricsRoutes);
     v1Router.use('/errors', errorsRoutes);
     v1Router.use('/admin/cors-diagnostics', corsDiagnosticsRoutes);
-    v1Router.use('/admin/dead-letter', deadLetterRoutes);
-    app.use('/api/v1', v1Router);
+     v1Router.use('/admin/dead-letter', deadLetterRoutes);
+     v1Router.use('/admin/bet-audit', betAuditRoutes);
+     app.use('/api/v1', v1Router);
 
     // Deprecation headers for legacy unversioned /api/* paths
     app.use('/api', (req, res, next) => {

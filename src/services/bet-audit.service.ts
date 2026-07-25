@@ -169,15 +169,51 @@ class BetAuditService {
     });
   }
 
-  /** Return a copy of all in-memory events (for testing / analytics). */
-  getEvents(): BetAuditEvent[] {
-    return [...this.events];
-  }
+   /** Return a copy of all in-memory events (for testing / analytics). */
+   getEvents(): BetAuditEvent[] {
+     return [...this.events];
+   }
 
-  /** Clear all in-memory events (for test isolation). */
-  clear(): void {
-    this.events = [];
-  }
+   /**
+    * Query in-memory audit events with optional filtering and redaction.
+    *
+    * @param address - optional wallet address to filter on
+    * @param limit   - maximum number of events to return (default 50)
+    * @param redact  - when true, mask sensitive fields like txHash
+    */
+   queryEvents({
+     address,
+     limit = 50,
+     redact = true,
+   }: {
+     address?: string;
+     limit?: number;
+     redact?: boolean;
+   } = {}): BetAuditEvent[] {
+     let filtered = [...this.events];
+
+     if (address) {
+       filtered = filtered.filter((e) => e.address === address);
+     }
+
+     filtered = filtered.slice(0, limit);
+
+     if (redact) {
+       filtered = filtered.map((event) => ({
+         ...event,
+         txHash: event.txHash
+           ? `${event.txHash.slice(0, 8)}...`
+           : undefined,
+       }));
+     }
+
+     return filtered;
+   }
+
+   /** Clear all in-memory events (for test isolation). */
+   clear(): void {
+     this.events = [];
+   }
 }
 
 export const betAuditService = new BetAuditService();
