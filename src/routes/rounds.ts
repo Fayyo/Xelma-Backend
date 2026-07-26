@@ -37,29 +37,12 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const rounds = await getRepositories().rounds.listActiveRounds();
     return sendSuccess(res, rounds);
-    if (!config.app.roundsMockMode) {
-      try {
-        const onChainRound = await sorobanService.getActiveRound();
-        if (onChainRound) {
-          const mapped = mapSorobanActiveRound(onChainRound);
-          return sendSuccess(res, { source: 'soroban', rounds: [mapped] });
-        }
-      } catch (err) {
-        logger.warn('Soroban fetch failed; falling back to mock rounds', {
-          error: (err as Error).message,
-        });
-      }
-    }
-
-   // return sendSuccess(res, { source: 'mock', rounds: getMockRounds() });
-    const { source, rounds } = await roundService.getRoundsForApi();
-    return res.json({ source, rounds });
   } catch (err) {
     next(err);
   }
 });
 
-// TODO: Call contract via Xelma TypeScript bindings — bets must go on-chain; this endpoint is logging/analytics only for now
+// TODO: Call contract via Xelma TypeScript bindings â€” bets must go on-chain; this endpoint is logging/analytics only for now
 router.post('/:id/bet', betRateLimiter, validate(betSchema), (_req, res) => {
   res.json({ success: true, message: 'Bet recorded (stub)' });
 });
