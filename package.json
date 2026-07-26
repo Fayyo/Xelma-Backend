@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit",
     "scorecard": "node scripts/production-readiness-scorecard.js",
     "test": "npx ts-node src/tests/hackathon.test.ts",
-    "test:unit:coverage": "mkdir -p coverage && npx ts-node src/tests/hackathon.test.ts",
+    "test:unit:coverage": "mkdir -p coverage && npx ts-node src/tests/hackathon.test.ts && npx jest src/tests/hackathon.service.spec.ts --coverage --coverageReporters=text-summary",
+    "test:unit": "npx jest src/tests/hackathon.service.spec.ts",
     "test:integration": "echo 'Integration tests pass'",
     "docs:verify": "echo 'OpenAPI docs verify pass'"
   },
