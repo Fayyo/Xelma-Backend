@@ -107,12 +107,23 @@ const config: Config = {
     "/src/__mocks__/",
     "/src/tests/",
   ],
+  // Coverage floors, raised incrementally as under-covered modules gain
+  // tests (see src/tests/{challenge,payout,response,timeout-wrapper}*
+  // .spec.ts, added specifically to close gaps here). Lines/statements were
+  // the weakest floor relative to branches/functions, since money-path
+  // services had branch coverage from error-path tests but many pure
+  // utility modules had none at all.
+  //
+  // Follow-up plan: once round-scheduler.service, resolution.service, and
+  // the Soroban integration layer have direct unit tests (currently
+  // exercised only indirectly via route specs), raise this again toward
+  // lines/statements 50, functions 65, branches 75.
   coverageThreshold: {
     global: {
-      branches: 70,
-      functions: 50,
-      lines: 35,
-      statements: 35,
+      branches: 71,
+      functions: 51,
+      lines: 38,
+      statements: 38,
     },
   },
 };
