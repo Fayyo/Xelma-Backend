@@ -1,6 +1,7 @@
 import { db } from '../db/db';
 import { hackathonUsers, hackathonRounds, hackathonBets } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { decAdd, decSub, toNumber } from '../utils/decimal.util';
 
 export class HackathonService {
   async getRounds() {
@@ -91,7 +92,8 @@ export class HackathonService {
     // 3. Update user balance
     const users = await db.select().from(hackathonUsers).where(eq(hackathonUsers.address, address));
     if (users.length > 0) {
-      const newBalance = Math.max(0, users[0].balance - amount);
+      const remaining = decSub(users[0].balance, amount);
+      const newBalance = remaining.lt(0) ? 0 : toNumber(remaining);
       await db.update(hackathonUsers).set({ balance: newBalance }).where(eq(hackathonUsers.address, address));
     }
 
@@ -102,17 +104,17 @@ export class HackathonService {
       if (round.mode === 'updown' && side) {
         if (side === 'UP') {
           await db.update(hackathonRounds)
-            .set({ poolUp: round.poolUp + amount })
+            .set({ poolUp: toNumber(decAdd(round.poolUp, amount)) })
             .where(eq(hackathonRounds.id, roundId));
         } else {
           await db.update(hackathonRounds)
-            .set({ poolDown: round.poolDown + amount })
+            .set({ poolDown: toNumber(decAdd(round.poolDown, amount)) })
             .where(eq(hackathonRounds.id, roundId));
         }
       } else if (round.mode === 'precision') {
         await db.update(hackathonRounds)
           .set({
-            totalPool: round.totalPool + amount,
+            totalPool: toNumber(decAdd(round.totalPool, amount)),
             predictionCount: round.predictionCount + 1,
           })
           .where(eq(hackathonRounds.id, roundId));

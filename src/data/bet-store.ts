@@ -1,3 +1,5 @@
+import { decAdd, toNumber } from '../utils/decimal.util';
+
 export interface StoredBet {
   address: string;
   amount: number;
@@ -75,9 +77,9 @@ class BetStore {
     const round = this.rounds.get(roundId);
     if (!round || round.mode !== 'updown') return;
 
-    if (side === 'UP') round.poolUp += amount;
-    else round.poolDown += amount;
-    round.totalPool = round.poolUp + round.poolDown;
+    if (side === 'UP') round.poolUp = toNumber(decAdd(round.poolUp, amount));
+    else round.poolDown = toNumber(decAdd(round.poolDown, amount));
+    round.totalPool = toNumber(decAdd(round.poolUp, round.poolDown));
 
     this.bets.push({ roundId, address, amount, side, timestamp: new Date().toISOString() });
     this.totalBetsCount++;
@@ -87,7 +89,7 @@ class BetStore {
     const round = this.rounds.get(roundId);
     if (!round || round.mode !== 'precision') return;
 
-    round.totalPool += amount;
+    round.totalPool = toNumber(decAdd(round.totalPool, amount));
     round.predictionCount++;
 
     this.bets.push({ roundId, address, amount, predictedPrice, timestamp: new Date().toISOString() });
