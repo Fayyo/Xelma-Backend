@@ -91,11 +91,12 @@ export class HackathonService {
       await prisma.mockLeaderboard.create({
         data: {
           address,
+          rank: 0,
           balance: 1000,
           pendingWinnings: 0,
           totalWins: 3,
           totalLosses: 1,
-          currentStreak: 3,
+          winStreak: 3,
           xp: 410,
           rankTitle: 'Rookie',
         },
@@ -149,5 +150,6 @@ export class HackathonService {
       }
     }
   }
+}
 
 export default new HackathonService();
