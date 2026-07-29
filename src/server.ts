@@ -1,9 +1,16 @@
+/**
+ * Hackathon server (`npm run dev:hackathon`).
+ *
+ * Chooses the mode and owns the process lifecycle; all HTTP wiring comes from
+ * `src/app-factory.ts` via `src/app.ts`.
+ */
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 
 dotenv.config();
 
 import app from './app';
+import logger from './utils/logger';
 import { initWebSocket, closeWebSocket } from './socket';
 
 const PORT = process.env.PORT || 3001;

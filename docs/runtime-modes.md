@@ -1,8 +1,15 @@
 # Runtime Modes Matrix
 
 This document is the **single source of truth** for Xelma Backend's runtime
-mode flags. Refer to it when setting up a local environment, debugging unexpected
-endpoint behavior, or choosing the right flags for a deployment profile.
+mode flags — the environment variables that change how endpoints *behave*.
+Refer to it when setting up a local environment, debugging unexpected endpoint
+behavior, or choosing the right flags for a deployment profile.
+
+> **Not to be confused with app feature flags.** Which *routes exist* on each
+> entrypoint is a separate concern, owned by `AppFeatures` in
+> [`src/app-factory.ts`](../src/app-factory.ts) and documented in the
+> "Feature flags" section of [CONTRIBUTING.md](../CONTRIBUTING.md). The env
+> vars below change behaviour; the feature flags change surface area.
 
 > **Startup tip:** The server logs the active mode flags at boot. Look for
 > `Active DATA_MODE=...`, `Bet mode: ...`, and `ROUNDS_MOCK_MODE=...` in the
@@ -78,7 +85,9 @@ and returns mock data immediately.
 **Affected endpoints:** `GET /api/rounds/active` (production), `GET /api/rounds` (hackathon)
 
 **Implementation:** `src/services/round.service.ts` (`getRoundsForApi`); checked in both
-`src/routes/rounds.routes.ts` and `src/routes/rounds.ts`.
+`src/routes/rounds.routes.ts` and `src/routes/rounds.ts`. Which of those two
+routers is mounted is decided by the app mode — see
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 
