@@ -6,10 +6,8 @@ import { betSchema, upDownBetSchema, precisionBetSchema } from '../schemas/bets.
 
 import { getRepositories } from '../repositories';
 import roundService from '../services/round.service';
-import sorobanService from '../services/soroban.service';
-import { mapSorobanRoundToFrontendCards } from '../utils/soroban-round.mapper';
-import config from '../config';
-import logger from '../utils/logger';
+import hackathonService from '../services/hackathon.service';
+import { toDecimalString } from '../utils/decimal.util';
 
 const router = Router();
 

@@ -12,6 +12,7 @@ import { prisma } from '../lib/prisma';
 export const WebSocketEvents = {
   RoundStarted: 'round:started',
   PredictionPlaced: 'prediction:placed',
+  BetAccepted: 'bet:accepted',
   RoundResolved: 'round:resolved',
   PriceUpdate: 'price:update',
   ChatMessage: 'chat:message',
@@ -23,6 +24,17 @@ export const WebSocketEvents = {
 
 export type WebSocketEventName =
   (typeof WebSocketEvents)[keyof typeof WebSocketEvents];
+
+/** Payload for live bet acceptance broadcasts (Issue #376). */
+export interface BetAcceptedPayload {
+  roundId?: string;
+  address: string;
+  amount: number;
+  side?: 'UP' | 'DOWN';
+  mode: 'UP_DOWN' | 'PRECISION';
+  state: string;
+  txHash?: string;
+}
 
 interface SafeEmitInput {
   room: string;
@@ -158,6 +170,30 @@ export class WebSocketService {
     };
     this.safeEmit({ room: 'round', event: WebSocketEvents.PredictionPlaced, payload });
     logger.info(`Emitted prediction:placed for prediction ${prediction.id}`);
+  }
+
+  /**
+   * Emit when a bet is accepted (stub or on-chain). Broadcasts to the
+   * general `round` room and, when known, to `round:{roundId}`.
+   * Used by both the full server (`initializeSocket` → this service) and
+   * the hackathon entrypoint (`initWebSocket` → same service).
+   */
+  emitBetAccepted(payload: BetAcceptedPayload): void {
+    this.safeEmit({
+      room: 'round',
+      event: WebSocketEvents.BetAccepted,
+      payload,
+    });
+    if (payload.roundId) {
+      this.safeEmit({
+        room: `round:${payload.roundId}`,
+        event: WebSocketEvents.BetAccepted,
+        payload,
+      });
+    }
+    logger.info(
+      `Emitted bet:accepted for address=${payload.address} mode=${payload.mode} state=${payload.state}`,
+    );
   }
 
   /**

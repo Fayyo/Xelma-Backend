@@ -173,6 +173,8 @@ The hackathon app and the production app share the same services, but the data b
 
 See [src/data/mockData.ts](src/data/mockData.ts) for the full in-memory seed data and fallback constants.
 
+> **Runtime modes reference:** For the complete flag matrix (DATA_MODE, BET_STUB_MODE, ROUNDS_MOCK_MODE), recommended combinations, and interaction diagrams, see **[docs/runtime-modes.md](docs/runtime-modes.md)**.
+
 ---
 
 ### Entrypoints
@@ -401,7 +403,7 @@ The mapper in [src/utils/soroban-round.mapper.ts](src/utils/soroban-round.mapper
 - `POST /precision` - [Auth] Submit a precision bet (stub or on-chain)
 
 #### **Tournaments (`/api/tournaments`)**
-- `GET /` - List all tournaments (optional `?status=` filter)
+- `GET /` - List tournaments. Query: `?mode=UP_DOWN|LEGENDS`, `?status=UPCOMING|ACTIVE|COMPLETED|CANCELLED`, `limit`, `offset` (mode and status may be combined). Response: `{ success, data, pagination: { limit, offset, total } }`
 - `GET /:id` - Get tournament detail by id
 - `POST /:id/join` - [Auth] Join a tournament
 
@@ -563,6 +565,12 @@ To include Redis (for Socket.IO adapter / distributed locks):
 
 ```bash
 docker compose --profile full up --build
+```
+
+To run the **hackathon mode** (no database required, mock data only):
+
+```bash
+docker compose --profile hackathon up
 ```
 
 **Troubleshooting Docker setup**
@@ -1203,8 +1211,23 @@ socket.on('new_notification', (notification) => {
 socket.on('new_message', (message) => {
   console.log('Chat:', message);
 });
+
+// Listen for accepted bets (stub or on-chain) — join the `round` room first
+socket.on('bet:accepted', (data) => {
+  console.log('Bet accepted:', data);
+  // {
+  //   roundId?: string,
+  //   address: string,
+  //   amount: number,
+  //   side?: 'UP' | 'DOWN',
+  //   mode: 'UP_DOWN' | 'PRECISION',
+  //   state: 'stub' | 'on-chain-success',
+  //   txHash?: string
+  // }
+});
 ```
 
+See also [`src/docs/websocket.md`](src/docs/websocket.md) for the Socket.IO client contract.
 ---
 
 ## Testing
@@ -2219,6 +2242,9 @@ npx ts-node src/db/migrate.ts
 # 5. Seed initial mock rounds and user data to Postgres
 npx ts-node src/db/seed.ts
 
+# Optional: seed joinable demo tournaments for /api/tournaments
+npm run db:seed:tournaments
+
 # 6. Start the server
 npm run dev
 ```
@@ -2371,7 +2397,17 @@ curl "http://localhost:3001/api/leaderboard?limit=10&offset=0"
 
 ```bash
 curl "http://localhost:3001/api/tournaments?limit=10&offset=0"
+curl "http://localhost:3001/api/tournaments?mode=UP_DOWN"
+curl "http://localhost:3001/api/tournaments?status=ACTIVE&mode=LEGENDS&limit=20&offset=0"
 ```
+
+For a fresh local database with joinable demo tournaments, run:
+
+```bash
+npm run db:seed:tournaments
+```
+
+The seed is idempotent and upserts three stable tournament IDs covering `ACTIVE`, `UPCOMING`, and `COMPLETED` statuses across both `UP_DOWN` and `LEGENDS` modes.
 
 #### Get Tournament Detail
 
