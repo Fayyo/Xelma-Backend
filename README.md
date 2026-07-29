@@ -173,6 +173,8 @@ The hackathon app and the production app share the same services, but the data b
 
 See [src/data/mockData.ts](src/data/mockData.ts) for the full in-memory seed data and fallback constants.
 
+> **Runtime modes reference:** For the complete flag matrix (DATA_MODE, BET_STUB_MODE, ROUNDS_MOCK_MODE), recommended combinations, and interaction diagrams, see **[docs/runtime-modes.md](docs/runtime-modes.md)**.
+
 ---
 
 ### Entrypoints
@@ -181,9 +183,10 @@ The repo has two Express applications. **New contributors should always use `npm
 
 | Script | File | Use when |
 |---|---|---|
-| `npm run dev` | `src/index.ts` | Everyday development â€” full backend, real DB, WebSocket, Soroban |
-| `npm run dev:hackathon` | `src/server.ts` | Demo without a database â€” mock data only |
-| `npm start` | `dist/server.js` (compiled `src/server.ts`) | **Default Render start command** â€” hackathon server (compiled) |
+| `npm run dev` | `src/index.ts` | Everyday development — full backend, real DB, WebSocket, Soroban |
+| `npm run dev:hackathon` | `src/server.ts` | Demo without a database — mock data only |
+| `npm start` / `npm run start:full` | `dist/index.js` (compiled `src/index.ts`) | **Production Render start command** — full backend (compiled) |
+| `npm run start:hackathon` | `dist/server.js` (compiled `src/server.ts`) | Hackathon Render start command — demo server (compiled) |
 
 See [docs/architecture.md](docs/architecture.md) for the full architecture decision, file map, migration plan, and a checklist for adding new routes.
 
@@ -343,6 +346,54 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture decis
 - `GET /:id` - Get specific round details
 - `POST /:id/resolve` - [Oracle] Resolve a round with final price
 
+##### Frontend round card contract
+The rounds endpoint now returns a unified array of frontend cards that preserves the existing hackathon card layout while allowing a live Soroban round to be surfaced alongside mock assets.
+
+- When Soroban data is available, the mapper emits one card with `source: "live"` for the live XLM round and fills the remaining slots with mock cards for BTC and ETH using `source: "mock"`.
+- When no live chain round exists, the endpoint returns only mock cards so the frontend continues rendering the same multi-asset layout without changes.
+
+Example response:
+```json
+{
+  "success": true,
+  "data": {
+    "source": "soroban",
+    "rounds": [
+      {
+        "id": "soroban-99",
+        "asset": "XLM",
+        "mode": "updown",
+        "status": "live",
+        "startPrice": 120,
+        "poolUp": 2,
+        "poolDown": 1,
+        "totalPool": 3,
+        "predictionCount": 1,
+        "closesAt": "2026-07-25T00:00:00.000Z",
+        "source": "live",
+        "roundStatus": "ACTIVE",
+        "roundTiming": { "startsAt": "...", "endsAt": "..." },
+        "priceData": { "startPrice": 120, "currentPrice": 121.2 },
+        "poolValues": { "upPool": 2, "downPool": 1, "totalPool": 3 },
+        "predictionMetadata": { "predictionCount": 1, "canPredict": true }
+      },
+      {
+        "id": "btc-round-1",
+        "asset": "BTC",
+        "source": "mock"
+      }
+    ]
+  }
+}
+```
+
+##### Mapper responsibilities
+The mapper in [src/utils/soroban-round.mapper.ts](src/utils/soroban-round.mapper.ts) is the single place that converts live Soroban data into the frontend contract. It keeps the mapping concern isolated from the route layer and provides:
+- live-to-frontend mapping for the active Soroban round
+- mock fallback cards for unsupported assets so the multi-card UI remains intact
+- source metadata (`"live"` vs `"mock"`) on every returned card
+- the same core round fields the frontend already expects (`id`, `asset`, `mode`, `status`, `startPrice`, `pool*`, `closesAt`)
+
 #### **Predictions (`/api/predictions`)**
 - `POST /submit` - [Auth] Submit a prediction for a round
 - `GET /user/:userId` - Get user's prediction history
@@ -353,7 +404,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture decis
 - `POST /precision` - [Auth] Submit a precision bet (stub or on-chain)
 
 #### **Tournaments (`/api/tournaments`)**
-- `GET /` - List all tournaments (optional `?status=` filter)
+- `GET /` - List tournaments. Query: `?mode=UP_DOWN|LEGENDS`, `?status=UPCOMING|ACTIVE|COMPLETED|CANCELLED`, `limit`, `offset` (mode and status may be combined). Response: `{ success, data, pagination: { limit, offset, total } }`
 - `GET /:id` - Get tournament detail by id
 - `POST /:id/join` - [Auth] Join a tournament
 
@@ -515,6 +566,12 @@ To include Redis (for Socket.IO adapter / distributed locks):
 
 ```bash
 docker compose --profile full up --build
+```
+
+To run the **hackathon mode** (no database required, mock data only):
+
+```bash
+docker compose --profile hackathon up
 ```
 
 **Troubleshooting Docker setup**
@@ -744,9 +801,12 @@ local `.env` with at least `DATABASE_URL` and `JWT_SECRET`; copy
 # Build TypeScript to JavaScript
 npm run build
 
-# Start production server
+# Start production server (dist/index.js — matches the Render production profile)
 npm start
 ```
+
+To run the hackathon/demo server instead (`dist/server.js` — matches the
+Render hackathon profile), use `npm run start:hackathon` after building.
 
 ### Render Parity Local Profile
 
@@ -1155,8 +1215,23 @@ socket.on('new_notification', (notification) => {
 socket.on('new_message', (message) => {
   console.log('Chat:', message);
 });
+
+// Listen for accepted bets (stub or on-chain) — join the `round` room first
+socket.on('bet:accepted', (data) => {
+  console.log('Bet accepted:', data);
+  // {
+  //   roundId?: string,
+  //   address: string,
+  //   amount: number,
+  //   side?: 'UP' | 'DOWN',
+  //   mode: 'UP_DOWN' | 'PRECISION',
+  //   state: 'stub' | 'on-chain-success',
+  //   txHash?: string
+  // }
+});
 ```
 
+See also [`src/docs/websocket.md`](src/docs/websocket.md) for the Socket.IO client contract.
 ---
 
 ## Testing
@@ -1258,9 +1333,11 @@ At minimum, migration PRs should include:
 
 | Script | Description |
 |--------|-------------|
-| `npm start` | Run hackathon/demo server (`dist/server.js`); this is the default Render start command (requires build) |
-| `npm run dev` | Start the **production** development server (`src/index.ts`) with hot-reload â€” use this for all feature work |
-| `npm run dev:hackathon` | Start the hackathon demo server (`src/server.ts`) â€” mock data only, no database required |
+| `npm start` | Run **production** full backend (`dist/index.js` — Prisma, Soroban, schedulers, WebSocket); this is the default Render start command for the `xelma-backend` profile (requires build). Alias for `npm run start:full` |
+| `npm run start:full` | Explicit alias for `npm start` — run the production full backend (`dist/index.js`) |
+| `npm run start:hackathon` | Run the hackathon/demo server (`dist/server.js`); this is the Render start command for the `xelma-backend-hackathon` profile (requires build) |
+| `npm run dev` | Start the **production** development server (`src/index.ts`) with hot-reload — use this for all feature work |
+| `npm run dev:hackathon` | Start the hackathon demo server (`src/server.ts`) — mock data only, no database required |
 | `npm run dev:render-parity` | Generate Prisma client, apply committed migrations, then start dev server |
 | `npm run build` | Compile TypeScript to JavaScript |
 | `npm test` | Run Jest test suite |
@@ -1273,7 +1350,6 @@ At minimum, migration PRs should include:
 | `npm run prisma:migrate` | Run database migrations |
 | `npm run prisma:migrate:deploy` | Apply committed migrations without creating new migration files |
 | `npm run db:prepare` | Run Prisma generate and migrate deploy |
-| `node dist/index.js` | Run production full backend (Prisma, Soroban, schedulers, WebSocket); use this command in production Render profile |
 | `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
 | `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
 | `npm run docs:postman` | Export Postman collection |
@@ -2105,7 +2181,7 @@ The repository includes a [`render.yaml`](render.yaml) blueprint with two servic
 
 | Setting | Value |
 |---|---|
-| **Start command** | `npm start` (runs `dist/server.js`) |
+| **Start command** | `npm run start:hackathon` (runs `dist/server.js`) |
 | **Health check** | `GET /api/health` |
 | **Database** | Not required â€” set `DATA_MODE=mock` for in-process data |
 | **Plan** | Free tier sufficient |
@@ -2124,7 +2200,7 @@ Minimal env vars needed (all others use sensible defaults):
 
 | Setting | Value |
 |---|---|
-| **Start command** | `node dist/index.js` |
+| **Start command** | `npm start` (runs `dist/index.js`) |
 | **Health check** | `GET /health` |
 | **Database** | PostgreSQL required â€” migrations run automatically in build phase |
 | **Plan** | Starter or higher recommended |
@@ -2181,6 +2257,9 @@ npx ts-node src/db/migrate.ts
 
 # 5. Seed initial mock rounds and user data to Postgres
 npx ts-node src/db/seed.ts
+
+# Optional: seed joinable demo tournaments for /api/tournaments
+npm run db:seed:tournaments
 
 # 6. Start the server
 npm run dev
@@ -2334,7 +2413,17 @@ curl "http://localhost:3001/api/leaderboard?limit=10&offset=0"
 
 ```bash
 curl "http://localhost:3001/api/tournaments?limit=10&offset=0"
+curl "http://localhost:3001/api/tournaments?mode=UP_DOWN"
+curl "http://localhost:3001/api/tournaments?status=ACTIVE&mode=LEGENDS&limit=20&offset=0"
 ```
+
+For a fresh local database with joinable demo tournaments, run:
+
+```bash
+npm run db:seed:tournaments
+```
+
+The seed is idempotent and upserts three stable tournament IDs covering `ACTIVE`, `UPCOMING`, and `COMPLETED` statuses across both `UP_DOWN` and `LEGENDS` modes.
 
 #### Get Tournament Detail
 
