@@ -1,4 +1,4 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
@@ -14,14 +14,14 @@ import chatRoutes from './routes/chat.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
 import { getHttpCorsOrigins } from './utils/cors';
-import { notFoundHandler } from './middleware/notFound'; // Ensure this file exists and outputs JSON
+import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import metricsRoutes from './routes/metrics.routes';
 import { hackathonSwaggerSpec } from './docs/hackathon-openapi';
 import config from './config';
-import logger from './utils/logger';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
+import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
 
 export interface CreateAppOptions {
   includeErrorHandlers?: boolean;
