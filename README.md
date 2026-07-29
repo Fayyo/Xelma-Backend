@@ -345,6 +345,54 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture decis
 - `GET /:id` - Get specific round details
 - `POST /:id/resolve` - [Oracle] Resolve a round with final price
 
+##### Frontend round card contract
+The rounds endpoint now returns a unified array of frontend cards that preserves the existing hackathon card layout while allowing a live Soroban round to be surfaced alongside mock assets.
+
+- When Soroban data is available, the mapper emits one card with `source: "live"` for the live XLM round and fills the remaining slots with mock cards for BTC and ETH using `source: "mock"`.
+- When no live chain round exists, the endpoint returns only mock cards so the frontend continues rendering the same multi-asset layout without changes.
+
+Example response:
+```json
+{
+  "success": true,
+  "data": {
+    "source": "soroban",
+    "rounds": [
+      {
+        "id": "soroban-99",
+        "asset": "XLM",
+        "mode": "updown",
+        "status": "live",
+        "startPrice": 120,
+        "poolUp": 2,
+        "poolDown": 1,
+        "totalPool": 3,
+        "predictionCount": 1,
+        "closesAt": "2026-07-25T00:00:00.000Z",
+        "source": "live",
+        "roundStatus": "ACTIVE",
+        "roundTiming": { "startsAt": "...", "endsAt": "..." },
+        "priceData": { "startPrice": 120, "currentPrice": 121.2 },
+        "poolValues": { "upPool": 2, "downPool": 1, "totalPool": 3 },
+        "predictionMetadata": { "predictionCount": 1, "canPredict": true }
+      },
+      {
+        "id": "btc-round-1",
+        "asset": "BTC",
+        "source": "mock"
+      }
+    ]
+  }
+}
+```
+
+##### Mapper responsibilities
+The mapper in [src/utils/soroban-round.mapper.ts](src/utils/soroban-round.mapper.ts) is the single place that converts live Soroban data into the frontend contract. It keeps the mapping concern isolated from the route layer and provides:
+- live-to-frontend mapping for the active Soroban round
+- mock fallback cards for unsupported assets so the multi-card UI remains intact
+- source metadata (`"live"` vs `"mock"`) on every returned card
+- the same core round fields the frontend already expects (`id`, `asset`, `mode`, `status`, `startPrice`, `pool*`, `closesAt`)
+
 #### **Predictions (`/api/predictions`)**
 - `POST /submit` - [Auth] Submit a prediction for a round
 - `GET /user/:userId` - Get user's prediction history
