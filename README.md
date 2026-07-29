@@ -185,7 +185,8 @@ The repo has two Express applications. **New contributors should always use `npm
 |---|---|---|
 | `npm run dev` | `src/index.ts` | Everyday development — full backend, real DB, WebSocket, Soroban |
 | `npm run dev:hackathon` | `src/server.ts` | Demo without a database — mock data only |
-| `npm start` | `dist/server.js` (compiled `src/server.ts`) | **Default Render start command** — hackathon server (compiled) |
+| `npm start` / `npm run start:full` | `dist/index.js` (compiled `src/index.ts`) | **Production Render start command** — full backend (compiled) |
+| `npm run start:hackathon` | `dist/server.js` (compiled `src/server.ts`) | Hackathon Render start command — demo server (compiled) |
 
 See [docs/architecture.md](docs/architecture.md) for the full architecture decision, file map, migration plan, and a checklist for adding new routes.
 
@@ -800,9 +801,12 @@ local `.env` with at least `DATABASE_URL` and `JWT_SECRET`; copy
 # Build TypeScript to JavaScript
 npm run build
 
-# Start production server
+# Start production server (dist/index.js — matches the Render production profile)
 npm start
 ```
+
+To run the hackathon/demo server instead (`dist/server.js` — matches the
+Render hackathon profile), use `npm run start:hackathon` after building.
 
 ### Render Parity Local Profile
 
@@ -1318,7 +1322,9 @@ At minimum, migration PRs should include:
 
 | Script | Description |
 |--------|-------------|
-| `npm start` | Run hackathon/demo server (`dist/server.js`); this is the default Render start command (requires build) |
+| `npm start` | Run **production** full backend (`dist/index.js` — Prisma, Soroban, schedulers, WebSocket); this is the default Render start command for the `xelma-backend` profile (requires build). Alias for `npm run start:full` |
+| `npm run start:full` | Explicit alias for `npm start` — run the production full backend (`dist/index.js`) |
+| `npm run start:hackathon` | Run the hackathon/demo server (`dist/server.js`); this is the Render start command for the `xelma-backend-hackathon` profile (requires build) |
 | `npm run dev` | Start the **production** development server (`src/index.ts`) with hot-reload — use this for all feature work |
 | `npm run dev:hackathon` | Start the hackathon demo server (`src/server.ts`) — mock data only, no database required |
 | `npm run dev:render-parity` | Generate Prisma client, apply committed migrations, then start dev server |
@@ -1333,7 +1339,6 @@ At minimum, migration PRs should include:
 | `npm run prisma:migrate` | Run database migrations |
 | `npm run prisma:migrate:deploy` | Apply committed migrations without creating new migration files |
 | `npm run db:prepare` | Run Prisma generate and migrate deploy |
-| `node dist/index.js` | Run production full backend (Prisma, Soroban, schedulers, WebSocket); use this command in production Render profile |
 | `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
 | `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
 | `npm run docs:postman` | Export Postman collection |
@@ -2165,7 +2170,7 @@ The repository includes a [`render.yaml`](render.yaml) blueprint with two servic
 
 | Setting | Value |
 |---|---|
-| **Start command** | `npm start` (runs `dist/server.js`) |
+| **Start command** | `npm run start:hackathon` (runs `dist/server.js`) |
 | **Health check** | `GET /api/health` |
 | **Database** | Not required — set `DATA_MODE=mock` for in-process data |
 | **Plan** | Free tier sufficient |
@@ -2184,7 +2189,7 @@ Minimal env vars needed (all others use sensible defaults):
 
 | Setting | Value |
 |---|---|
-| **Start command** | `node dist/index.js` |
+| **Start command** | `npm start` (runs `dist/index.js`) |
 | **Health check** | `GET /health` |
 | **Database** | PostgreSQL required — migrations run automatically in build phase |
 | **Plan** | Starter or higher recommended |
