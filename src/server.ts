@@ -5,8 +5,7 @@ dotenv.config();
 
 import { assertPreflightOrExit } from './config/preflight';
 import app from './app';
-import { initWebSocket } from './socket';
-import logger from './utils/logger';
+import { initWebSocket, closeWebSocket } from './socket';
 
 assertPreflightOrExit();
 
@@ -19,5 +18,19 @@ initWebSocket(httpServer).catch(error => {
 });
 
 httpServer.listen(PORT, () => {
-  logger.info(`Hackathon server listening on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
+
+const shutdown = () => {
+  console.log('Shutting down gracefully...');
+  closeWebSocket();
+  // Ensure we don't hang on HTTP keep-alive connections
+  httpServer.closeAllConnections();
+  httpServer.close(() => {
+    console.log('Shutdown complete');
+    process.exit(0);
+  });
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

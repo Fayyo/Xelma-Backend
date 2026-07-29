@@ -16,6 +16,8 @@ import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
 import { getHttpCorsOrigins } from './utils/cors';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
+import { metricsMiddleware } from './middleware/metrics.middleware';
+import metricsRoutes from './routes/metrics.routes';
 import { hackathonSwaggerSpec } from './docs/hackathon-openapi';
 import config from './config';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
@@ -43,13 +45,32 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // Assign a correlation ID to every request and expose it on the response header
   app.use(requestIdMiddleware);
 
-  // Structured HTTP request logging — logged on finish with method, path,
-  // status, durationMs, and requestId. Shared between hackathon and full apps.
-  app.use(httpLoggerMiddleware);
+  // Prometheus metrics middleware (before routes so all requests are tracked)
+  app.use(metricsMiddleware);
+
+  // Structured Winston HTTP request logging with duration and correlation ID
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const startMs = Date.now();
+    // Capture path before sub-router routing strips the prefix from req.url
+    const path = req.originalUrl.split('?')[0];
+    res.on('finish', () => {
+      logger.info('http request', {
+        requestId: (req as any).requestId,
+        method: req.method,
+        path,
+        status: res.statusCode,
+        durationMs: Date.now() - startMs,
+      });
+    });
+    next();
+  });
 
   app.get('/docs', (_req, res) => res.redirect(302, '/api-docs'));
   app.get('/api-docs.json', (_req, res) => res.json(hackathonSwaggerSpec));
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(hackathonSwaggerSpec, { explorer: true }));
+
+  // Prometheus metrics endpoint
+  app.use('/metrics', metricsRoutes);
 
   app.use('/api', apiRateLimiter);
   app.use('/api', writeRateLimiter);
