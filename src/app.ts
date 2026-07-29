@@ -12,7 +12,7 @@ import betsRoutes from './routes/bets.routes';
 import tournamentsRoutes from './routes/tournaments.routes';
 import chatRoutes from './routes/chat.routes';
 import notificationsRoutes from './routes/notifications.routes';
-import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
+import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter.middleware';
 import { getHttpCorsOrigins } from './utils/cors';
 import { notFoundHandler } from './middleware/notFound'; // Ensure this file exists and outputs JSON
 import { errorHandler } from './middleware/errorHandler';
