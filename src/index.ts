@@ -31,6 +31,7 @@ import { errorHandler } from './middleware/errorHandler.middleware';
 import config from './config';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
+import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
 import metricsRoutes from './routes/metrics.routes';
 import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
@@ -156,12 +157,9 @@ export function createApp(): Express {
    // Prometheus metrics middleware (before routes so all requests are tracked)
    app.use(metricsMiddleware);
 
-   // Request logging middleware
-   app.use((req: Request, res: Response, next: NextFunction) => {
-      const requestId = (req as any).requestId;
-      logger.info(`${req.method} ${req.path}`, { requestId });
-      next();
-   });
+   // Structured HTTP request logging — logged on finish with method, path,
+   // status, durationMs, and requestId. Shared between hackathon and full apps.
+   app.use(httpLoggerMiddleware);
 
     // API Routes
     app.use('/api/auth', authRoutes);
