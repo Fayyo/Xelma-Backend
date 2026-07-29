@@ -71,7 +71,6 @@ if (!config.app.roundsMockMode) {
       rounds,
       payload: { source, rounds },
     });
->>>>>>> upstream/main
   } catch (err) {
     next(err);
   }
