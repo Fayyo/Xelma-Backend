@@ -5,6 +5,8 @@ import { upDownBetSchema, precisionBetSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
 import {
   acquireIdempotencyLock,
+  IDEMPOTENCY_STORE_UNAVAILABLE,
+  IdempotencyStoreUnavailableError,
   releaseIdempotencyLock,
   storeIdempotencyResult,
   isValidIdempotencyKey,
@@ -44,11 +46,12 @@ router.post(
   "/up-down",
   verifyStellarAuth,
   validate(upDownBetSchema),
-  async (req: any, res: Response, next: NextFunction) => {
+  (async (req: any, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user.userId;
     const endpoint = "/api/bets/up-down";
     let lockAcquired = false;
+    let operationCompleted = false;
 
     try {
       if (idempotencyKey) {
@@ -72,6 +75,13 @@ router.post(
             .json(lockResult.cachedResponse.body);
         }
 
+        if (lockResult.error === IDEMPOTENCY_STORE_UNAVAILABLE) {
+          throw new ExternalServiceError(
+            "Idempotency store unavailable. Please try again.",
+            ErrorCode.EXTERNAL_SERVICE_ERROR
+          );
+        }
+
         if (lockResult.error) {
           throw new ConflictError(
             lockResult.error,
@@ -83,6 +93,7 @@ router.post(
       }
 
       const result = await betService.recordUpDownBet(req.body, idempotencyKey);
+      operationCompleted = true;
       const responseBody = {
         success: true,
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
@@ -104,8 +115,15 @@ router.post(
 
       res.json(responseBody);
     } catch (error: any) {
-      if (idempotencyKey && lockAcquired) {
+      if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       if (error?.message?.includes("Circuit breaker")) {
@@ -147,11 +165,12 @@ router.post(
   "/precision",
   verifyStellarAuth,
   validate(precisionBetSchema),
-  async (req: any, res: Response, next: NextFunction) => {
+  (async (req: any, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user.userId;
     const endpoint = "/api/bets/precision";
     let lockAcquired = false;
+    let operationCompleted = false;
 
     try {
       if (idempotencyKey) {
@@ -175,6 +194,13 @@ router.post(
             .json(lockResult.cachedResponse.body);
         }
 
+        if (lockResult.error === IDEMPOTENCY_STORE_UNAVAILABLE) {
+          throw new ExternalServiceError(
+            "Idempotency store unavailable. Please try again.",
+            ErrorCode.EXTERNAL_SERVICE_ERROR
+          );
+        }
+
         if (lockResult.error) {
           throw new ConflictError(
             lockResult.error,
@@ -186,6 +212,7 @@ router.post(
       }
 
       const result = await betService.recordPrecisionBet(req.body, idempotencyKey);
+      operationCompleted = true;
       const responseBody = {
         success: true,
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
@@ -207,8 +234,15 @@ router.post(
 
       res.json(responseBody);
     } catch (error: any) {
-      if (idempotencyKey && lockAcquired) {
+      if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       if (error?.message?.includes("Circuit breaker")) {
