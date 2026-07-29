@@ -120,6 +120,27 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
             },
           },
         },
+        Tournament: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            mode: { type: 'string', enum: ['UP_DOWN', 'LEGENDS'] },
+            status: {
+              type: 'string',
+              enum: ['UPCOMING', 'ACTIVE', 'COMPLETED', 'CANCELLED'],
+            },
+            entryFee: { type: 'string' },
+            prizePool: { type: 'string' },
+            maxParticipants: { type: 'integer' },
+            currentParticipants: { type: 'integer' },
+            startTime: { type: 'string', format: 'date-time' },
+            endTime: { type: 'string', format: 'date-time' },
+            rounds: { type: 'integer' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
       },
     },
     tags: [
@@ -128,6 +149,8 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
       { name: 'stats', description: 'Platform statistics' },
       { name: 'rounds', description: 'Mock prediction rounds' },
       { name: 'leaderboard', description: 'Mock leaderboard data' },
+      { name: 'tournaments', description: 'Tournament listings and join' },
+      { name: 'observability', description: 'Prometheus metrics and readiness probes' },
     ],
   },
   apis: [
@@ -136,5 +159,6 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     path.join(process.cwd(), 'src/routes/stats.ts'),
     path.join(process.cwd(), 'src/routes/rounds.ts'),
     path.join(process.cwd(), 'src/routes/leaderboard.ts'),
+    path.join(process.cwd(), 'src/routes/tournaments.routes.ts'),
   ],
 });
