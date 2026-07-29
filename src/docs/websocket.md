@@ -23,6 +23,7 @@ import { io } from "socket.io-client";
 import type { TypedClientSocket } from "../../src/types/socket-events";
 
 const socket: TypedClientSocket = io("https://api.tevalabs.com", {
+const socket = io("https://api.tevalabs.com", {
   auth: {
     token: "YOUR_JWT_ACCESS_TOKEN",
   },
@@ -252,3 +253,42 @@ socket.emit("join:round", { roundId: "abc-123" });
 ```
 
 See the full type definitions in [`src/types/socket-events.ts`](../types/socket-events.ts).
+  reconnectionDelay: 1000
+});
+```
+
+Join the `round` room after connect (via your client's room-join handshake) to receive round and bet broadcasts.
+
+---
+
+## Server → Client events
+
+| Event | Room(s) | When |
+| --- | --- | --- |
+| `round:started` / `round_update` | `round`, `round:{id}` | Round lifecycle |
+| `prediction:placed` | `round` | Legacy prediction placement |
+| `bet:accepted` | `round`, `round:{id}` (when `roundId` known) | Successful stub or on-chain bet |
+| `price:update` / `price_update` | `round`, active `round:{id}` | Oracle price ticks |
+| `round:resolved` | `round` | Round resolution |
+| `chat:message` | `chat` | Chat |
+| `notification:new` | `user:{userId}` | User notification |
+
+### `bet:accepted` (Issue #376)
+
+Emitted **once** after `BetService` successfully records a stub bet or places an on-chain bet. Never emitted when Soroban / validation fails.
+
+```typescript
+socket.on("bet:accepted", (payload: {
+  roundId?: string;
+  address: string;
+  amount: number;
+  side?: "UP" | "DOWN";      // UP_DOWN only
+  mode: "UP_DOWN" | "PRECISION";
+  state: string;             // e.g. "stub" | "on-chain-success"
+  txHash?: string;           // present for on-chain placements
+}) => {
+  // Update live pools / activity feed
+});
+```
+
+Both the hackathon entrypoint (`initWebSocket` in `src/server.ts`) and the full backend (`initializeSocket` in `src/index.ts`) publish through `websocketService`, so clients see the same event regardless of which process is running.

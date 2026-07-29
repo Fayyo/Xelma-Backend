@@ -27,6 +27,10 @@ import type {
    SessionCheckpointPayload,
 } from './types/socket-events';
 
+let activeStaleInterval: NodeJS.Timeout | null = null;
+let activeTokenExpiryInterval: NodeJS.Timeout | null = null;
+let ioInstance: SocketIOServer | null = null;
+
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 export function getCorsOrigins(): string | string[] {
@@ -327,22 +331,24 @@ export async function initializeSocket(
       });
    });
 
+   ioInstance = io;
+
    // Periodic stale connection cleanup.
    // unref() ensures this timer does not keep the Node.js process alive.
-   const staleInterval = setInterval(
+   activeStaleInterval = setInterval(
       () => checkStaleConnections(io),
       STALE_CHECK_INTERVAL_MS
    );
-   staleInterval.unref();
+   activeStaleInterval.unref();
 
    // Periodic token-expiry check — proactively notify clients whose JWT has
    // expired so they can refresh and reconnect without waiting for an auth
    // failure on their next application event.
-   const tokenExpiryInterval = setInterval(
+   activeTokenExpiryInterval = setInterval(
       () => checkExpiredTokenSockets(io),
       PING_INTERVAL
    );
-   tokenExpiryInterval.unref();
+   activeTokenExpiryInterval.unref();
 
    // JWT Authentication middleware
    io.use(async (socket: AuthenticatedSocket, next) => {
@@ -676,4 +682,20 @@ export async function initWebSocket(httpServer: HTTPServer): Promise<void> {
    await initializeSocket(httpServer);
 }
 
-export default { initializeSocket };
+export function closeWebSocket(): void {
+   if (activeStaleInterval) {
+      clearInterval(activeStaleInterval);
+      activeStaleInterval = null;
+   }
+   if (activeTokenExpiryInterval) {
+      clearInterval(activeTokenExpiryInterval);
+      activeTokenExpiryInterval = null;
+   }
+   if (ioInstance) {
+      // Disconnect all socket clients forcefully to allow HTTP server to close
+      ioInstance.disconnectSockets(true);
+      ioInstance = null;
+   }
+}
+
+export default { initializeSocket, closeWebSocket };

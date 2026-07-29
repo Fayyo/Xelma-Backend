@@ -76,6 +76,24 @@ export function decodeCursor<T extends Record<string, unknown>>(
 // ---------------------------------------------------------------------------
 
 /**
+ * Build a stable offset-paginated response envelope.
+ *
+ * Shape used by tournament listing and other list endpoints:
+ * `{ data, pagination: { limit, offset, total } }`
+ */
+export function buildOffsetPage<T>(
+  items: T[],
+  limit: number,
+  offset: number,
+  total: number,
+): { data: T[]; pagination: { limit: number; offset: number; total: number } } {
+  return {
+    data: items,
+    pagination: { limit, offset, total },
+  };
+}
+
+/**
  * Build the OffsetMeta object from query params + total count.
  */
 export function buildOffsetMeta(
