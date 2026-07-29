@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
+import { UserRole } from '@prisma/client';
+import { generateToken } from '../utils/jwt.util';
 
 // Mock Stellar and Soroban services to prevent loading @stellar/stellar-sdk (which contains ESM files that Jest fails to parse)
 jest.mock('../services/stellar.service', () => ({
@@ -31,6 +33,7 @@ describe('Hackathon Endpoints & Middleware', () => {
   const app = createApp();
 
   const validAddress = 'GBZXF5Z5S5JQLYQR3P6F4N6M4E2O3K2N4M4H4K4K4K4K4K4K4K4K4K4K'; // Valid Stellar format
+  const token = generateToken('hackathon-integration-user', validAddress, UserRole.USER);
 
   beforeAll(async () => {
     // Ensure database is seeded for tests
@@ -163,7 +166,16 @@ describe('Hackathon Endpoints & Middleware', () => {
     });
   });
 
-  describe('POST /api/rounds/hackathon/up-down/:id/bet', () => {
+  describe('POST /api/rounds/hackathon/up-down/:id/bet (auth required)', () => {
+    it('returns 401 without an auth token', async () => {
+      const res = await request(app)
+        .post('/api/rounds/hackathon/up-down/btc-updown-live/bet')
+        .send({ address: validAddress, amount: 200, side: 'UP' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('No token provided');
+    });
+
     it('persists the bet, updates user balance, and updates the round pool', async () => {
       // Get round initial pools
       const roundBefore = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'btc-updown-live')))[0];
@@ -172,6 +184,7 @@ describe('Hackathon Endpoints & Middleware', () => {
       // Place bet
       const res = await request(app)
         .post('/api/rounds/hackathon/up-down/btc-updown-live/bet')
+        .set('Authorization', `Bearer ${token}`)
         .send({
           address: validAddress,
           amount: 200,
@@ -190,7 +203,16 @@ describe('Hackathon Endpoints & Middleware', () => {
     });
   });
 
-  describe('POST /api/rounds/hackathon/precision/:id/bet', () => {
+  describe('POST /api/rounds/hackathon/precision/:id/bet (auth required)', () => {
+    it('returns 401 without an auth token', async () => {
+      const res = await request(app)
+        .post('/api/rounds/hackathon/precision/eth-precision-live/bet')
+        .send({ address: validAddress, amount: 150, predictedPrice: 3250 });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('No token provided');
+    });
+
     it('persists the bet and updates round totalPool and predictionCount', async () => {
       // Get round initial pools
       const roundBefore = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'eth-precision-live')))[0];
@@ -200,6 +222,7 @@ describe('Hackathon Endpoints & Middleware', () => {
       // Place bet
       const res = await request(app)
         .post('/api/rounds/hackathon/precision/eth-precision-live/bet')
+        .set('Authorization', `Bearer ${token}`)
         .send({
           address: validAddress,
           amount: 150,
