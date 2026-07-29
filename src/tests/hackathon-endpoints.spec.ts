@@ -7,9 +7,17 @@ jest.mock('../services/stellar.service', () => ({
   verifySignature: jest.fn(),
 }));
 
+// ── Shared mock controller ────────────────────────────────────────────────────
+// Each test suite can reconfigure these mocks via jest.mocked().mockXxx()
+// to test the live Soroban path vs the DB-fallback path.
+const mockGetUserStats = jest.fn();
+const mockGetPendingWinnings = jest.fn();
+const mockGetBalance = jest.fn();
+
 jest.mock('../services/soroban.service', () => ({
-  getUserStats: jest.fn(),
-  getPendingWinnings: jest.fn(),
+  getUserStats: (...args: unknown[]) => mockGetUserStats(...args),
+  getPendingWinnings: (...args: unknown[]) => mockGetPendingWinnings(...args),
+  getBalance: (...args: unknown[]) => mockGetBalance(...args),
   getHealth: jest.fn(),
 }));
 
@@ -27,6 +35,14 @@ describe('Hackathon Endpoints & Middleware', () => {
   beforeAll(async () => {
     // Ensure database is seeded for tests
     await hackathonService.getUserStats(validAddress);
+  });
+
+  beforeEach(() => {
+    // Default mocks: Soroban unavailable → the endpoint falls back to DB.
+    // Individual tests override these to test the live Soroban path.
+    mockGetUserStats.mockResolvedValue(null);
+    mockGetPendingWinnings.mockResolvedValue(BigInt(0));
+    mockGetBalance.mockResolvedValue(0);
   });
 
   afterAll(async () => {
@@ -74,7 +90,11 @@ describe('Hackathon Endpoints & Middleware', () => {
   });
 
   describe('GET /api/user/:address/stats', () => {
-    it('returns believable stats for a valid address', async () => {
+    it('returns fallback DB/mock stats when Soroban is unavailable', async () => {
+      mockGetUserStats.mockResolvedValue(null);
+      mockGetPendingWinnings.mockResolvedValue(BigInt(0));
+      mockGetBalance.mockResolvedValue(0);
+
       const res = await request(app).get(`/api/user/${validAddress}/stats`);
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -87,6 +107,51 @@ describe('Hackathon Endpoints & Middleware', () => {
         xp: expect.any(Number),
         rankTitle: expect.any(String),
       });
+      // Fallback returns DB defaults (balance=1000, totalWins=3, xp=410, rankTitle='Rookie')
+      expect(res.body.balance).toBe(1000);
+      expect(res.body.totalWins).toBe(3);
+      expect(res.body.xp).toBe(410);
+      expect(res.body.rankTitle).toBe('Rookie');
+    });
+
+    it('returns on-chain stats from Soroban when contract returns data', async () => {
+      mockGetUserStats.mockResolvedValue({
+        total_wins: 10,
+        total_losses: 2,
+        best_streak: 5,
+        current_streak: 3,
+      });
+      mockGetPendingWinnings.mockResolvedValue(BigInt(50_000_000)); // 5 XLM in stroops
+      mockGetBalance.mockResolvedValue(1250);
+
+      const res = await request(app).get(`/api/user/${validAddress}/stats`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        address: validAddress,
+        balance: 1250,
+        pendingWinnings: 5, // 50_000_000 stroops → 5 XLM
+        totalWins: 10,
+        totalLosses: 2,
+        currentStreak: 3,
+        xp: 1250, // 10*100 + 5*50 = 1250
+        rankTitle: 'Bronze', // xp >= 500 < 1500 → Bronze
+      });
+    });
+
+    it('returns on-chain stats with Diamond rank for high XP', async () => {
+      mockGetUserStats.mockResolvedValue({
+        total_wins: 100,
+        total_losses: 20,
+        best_streak: 50,
+        current_streak: 12,
+      });
+      mockGetPendingWinnings.mockResolvedValue(BigInt(0));
+      mockGetBalance.mockResolvedValue(5000);
+
+      const res = await request(app).get(`/api/user/${validAddress}/stats`);
+      expect(res.status).toBe(200);
+      expect(res.body.xp).toBe(12500); // 100*100 + 50*50 = 12500
+      expect(res.body.rankTitle).toBe('Diamond'); // xp >= 10000
     });
 
     it('returns 400 for an invalid address format', async () => {
