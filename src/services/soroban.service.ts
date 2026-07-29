@@ -126,6 +126,8 @@ export class SorobanService {
     operation: () => Promise<TimeoutResult<T>>,
     fallback?: T,
   ): Promise<TimeoutResult<T>> {
+    const startMs = Date.now();
+
     try {
       const result = await this.breaker.execute(async () => {
         const timeoutResult = await operation();
@@ -134,9 +136,19 @@ export class SorobanService {
         }
         return timeoutResult;
       });
+
+      const latencySeconds = (Date.now() - startMs) / 1000;
+      sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
+      sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "success" });
+
       return result;
     } catch (error) {
+      const latencySeconds = (Date.now() - startMs) / 1000;
+      sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
+
       if (error instanceof CircuitBreakerOpenError) {
+        sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "breaker_open" });
+
         logger.warn("Skipped Soroban call because circuit breaker is open", {
           operationName,
           breaker: error.breakerName,
@@ -152,6 +164,8 @@ export class SorobanService {
           timedOut: false,
         };
       }
+
+      sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "failure" });
 
       if (error instanceof Error) {
         return {
