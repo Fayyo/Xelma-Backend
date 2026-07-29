@@ -2,6 +2,8 @@ import { describe, expect, it } from '@jest/globals';
 import { hackathonSwaggerSpec } from '../docs/hackathon-openapi';
 
 const REQUIRED_HACKATHON_PATHS: Array<{ path: string; method: string }> = [
+  { path: '/api/auth/challenge', method: 'post' },
+  { path: '/api/auth/connect', method: 'post' },
   { path: '/health', method: 'get' },
   { path: '/api/prices', method: 'get' },
   { path: '/api/stats', method: 'get' },

@@ -10,12 +10,70 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     info: {
       title: 'Xelma Hackathon API',
       description:
-        'Hackathon/demo API for price widgets, mock rounds, leaderboard, and platform stats. Use Swagger UI to explore endpoints.',
+        'Hackathon/demo API for wallet auth, price widgets, mock rounds, leaderboard, and platform stats. Use Swagger UI to explore endpoints.',
       version: '1.0.0',
     },
     servers: [{ url: API_BASE_URL }],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Paste a JWT like: Bearer <token>',
+        },
+      },
       schemas: {
+        AuthChallengeRequest: {
+          type: 'object',
+          properties: {
+            walletAddress: {
+              type: 'string',
+              description: 'Stellar wallet public key (G...)',
+              example: 'GBRPYHIL2C2V3F5YQZ4H6J7K8L9M0N1O2P3Q4R5S6T7U8V9W0X1Y2Z3A4B',
+            },
+          },
+          required: ['walletAddress'],
+          additionalProperties: false,
+        },
+        AuthChallengeResponse: {
+          type: 'object',
+          properties: {
+            challenge: { type: 'string', example: 'random-challenge-string' },
+            expiresAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['challenge', 'expiresAt'],
+          additionalProperties: false,
+        },
+        AuthConnectRequest: {
+          type: 'object',
+          properties: {
+            walletAddress: { type: 'string', description: 'Stellar wallet public key (G...)' },
+            challenge: { type: 'string', description: 'Challenge previously returned from /challenge' },
+            signature: { type: 'string', description: 'Signature over the challenge' },
+          },
+          required: ['walletAddress', 'challenge', 'signature'],
+          additionalProperties: false,
+        },
+        AuthConnectResponse: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'JWT access token' },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                walletAddress: { type: 'string' },
+                createdAt: { type: 'string', format: 'date-time' },
+                lastLoginAt: { type: 'string', format: 'date-time' },
+              },
+              required: ['id', 'walletAddress', 'createdAt', 'lastLoginAt'],
+              additionalProperties: true,
+            },
+          },
+          required: ['token', 'user'],
+          additionalProperties: false,
+        },
         ErrorResponse: {
           type: 'object',
           properties: {
@@ -144,6 +202,7 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
       },
     },
     tags: [
+      { name: 'auth', description: 'Wallet authentication and JWT issuance' },
       { name: 'health', description: 'Service health checks' },
       { name: 'prices', description: 'Live crypto prices (CoinGecko)' },
       { name: 'stats', description: 'Platform statistics' },
@@ -154,6 +213,7 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     ],
   },
   apis: [
+    path.join(process.cwd(), 'src/routes/auth.routes.ts'),
     path.join(process.cwd(), 'src/routes/health.ts'),
     path.join(process.cwd(), 'src/routes/index.ts'),
     path.join(process.cwd(), 'src/routes/stats.ts'),

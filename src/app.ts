@@ -7,6 +7,7 @@ import healthRoutes from './routes/health';
 import statsRoutes from './routes/stats';
 import roundsRoutes from './routes/rounds';
 import leaderboardRoutes from './routes/leaderboard';
+import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import betsRoutes from './routes/bets.routes';
 import tournamentsRoutes from './routes/tournaments.routes';
@@ -49,21 +50,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use(metricsMiddleware);
 
   // Structured Winston HTTP request logging with duration and correlation ID
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const startMs = Date.now();
-    // Capture path before sub-router routing strips the prefix from req.url
-    const path = req.originalUrl.split('?')[0];
-    res.on('finish', () => {
-      logger.info('http request', {
-        requestId: (req as any).requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: Date.now() - startMs,
-      });
-    });
-    next();
-  });
+  app.use(httpLoggerMiddleware);
 
   app.get('/docs', (_req, res) => res.redirect(302, '/api-docs'));
   app.get('/api-docs.json', (_req, res) => res.json(hackathonSwaggerSpec));
@@ -75,6 +62,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api', apiRateLimiter);
   app.use('/api', writeRateLimiter);
   app.use('/api', healthRoutes);
+  app.use('/api/auth', authRoutes);
   app.use('/api/stats', statsRoutes);
   app.use('/api/rounds', roundsRoutes);
   app.use('/api/leaderboard', leaderboardRoutes);
