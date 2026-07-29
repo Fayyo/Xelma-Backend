@@ -4,6 +4,7 @@ import { createServer } from 'http';
 dotenv.config();
 
 import app from './app';
+import logger from './utils/logger';
 import { initWebSocket, closeWebSocket } from './socket';
 
 const PORT = process.env.PORT || 3001;
