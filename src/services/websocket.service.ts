@@ -4,10 +4,13 @@ import deadLetterQueueService from './dead-letter-queue.service';
 import { websocketEmitsTotal } from '../metrics/application.metrics';
 import { prisma } from '../lib/prisma';
 import type {
+  BetAcceptedPayload,
   ServerToClientEvents,
   TypedServer,
 } from '../types/socket-events';
 import type { ChatMessage } from '../types/chat.types';
+
+export type { BetAcceptedPayload };
 
 /**
  * Centralized event names so DLQ replay can map a stored `eventName` back
@@ -34,18 +37,6 @@ type EventPayloadMap = {
 };
 
 interface SafeEmitInput<E extends WebSocketEventName> {
-/** Payload for live bet acceptance broadcasts (Issue #376). */
-export interface BetAcceptedPayload {
-  roundId?: string;
-  address: string;
-  amount: number;
-  side?: 'UP' | 'DOWN';
-  mode: 'UP_DOWN' | 'PRECISION';
-  state: string;
-  txHash?: string;
-}
-
-interface SafeEmitInput {
   room: string;
   event: E;
   payload: EventPayloadMap[E];
