@@ -14,6 +14,16 @@ jest.mock("../services/soroban.service", () => ({
   },
 }));
 
+jest.mock("../services/websocket.service", () => ({
+  __esModule: true,
+  default: {
+    emitBetAccepted: jest.fn(),
+  },
+  WebSocketEvents: {
+    BetAccepted: "bet:accepted",
+  },
+}));
+
 jest.mock("../utils/logger", () => ({
   info: jest.fn(),
   warn: jest.fn(),

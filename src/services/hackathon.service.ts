@@ -86,7 +86,21 @@ export class HackathonService {
 
   async placeBet(roundId: string, address: string, amount: number, side?: 'UP' | 'DOWN', predictedPrice?: number) {
     // 1. Ensure user exists
-    await this.getUserStats(address);
+    const existing = await prisma.mockLeaderboard.findUnique({ where: { address } });
+    if (!existing) {
+      await prisma.mockLeaderboard.create({
+        data: {
+          address,
+          balance: 1000,
+          pendingWinnings: 0,
+          totalWins: 3,
+          totalLosses: 1,
+          currentStreak: 3,
+          xp: 410,
+          rankTitle: 'Rookie',
+        },
+      });
+    }
 
     // 2. Insert bet
     await prisma.mockBet.create({
@@ -135,6 +149,5 @@ export class HackathonService {
       }
     }
   }
-}
 
 export default new HackathonService();
