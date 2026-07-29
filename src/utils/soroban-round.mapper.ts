@@ -92,6 +92,13 @@ export function mapDatabaseActiveRound(round: Record<string, unknown>): Record<s
   };
 }
 
+export function mapMockActiveRound(round: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...round,
+    source: "mock" as const,
+  };
+}
+
 const MOCK_ASSETS = [
   { asset: "BTC", symbol: "BTC", label: "Bitcoin" },
   { asset: "ETH", symbol: "ETH", label: "Ethereum" },

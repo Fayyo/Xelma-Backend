@@ -6,8 +6,6 @@ import { betSchema, upDownBetSchema, precisionBetSchema } from '../schemas/bets.
 
 import { getRepositories } from '../repositories';
 import roundService from '../services/round.service';
-import hackathonService from '../services/hackathon.service';
-import { toDecimalString } from '../utils/decimal.util';
 
 const router = Router();
 
@@ -37,35 +35,19 @@ const router = Router();
  */
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!config.app.roundsMockMode) {
-      try {
-        const onChainRound = await sorobanService.getActiveRound();
-        const cards = mapSorobanRoundToFrontendCards(onChainRound);
-        const payload = {
-          source: onChainRound ? 'soroban' : 'mock',
-          rounds: cards,
-        };
-        return res.json({
-          success: true,
-          data: payload,
-          source: payload.source,
-          rounds: payload.rounds,
-          payload,
-        });
-      } catch (err) {
-        logger.warn('Soroban fetch failed; falling back to mock rounds', {
-          error: (err as Error).message,
-        });
-      }
-    }
-
+    // Single source of truth for round sourcing. `getRoundsForApi` owns the
+    // soroban → database → mock priority chain (and the ROUNDS_MOCK_MODE
+    // short-circuit), so this entrypoint stays in lockstep with the
+    // production `/api/rounds/active` route instead of re-implementing it.
     const { source, rounds } = await roundService.getRoundsForApi();
+    const payload = { source, rounds };
+
     return res.json({
       success: true,
-      data: { source, rounds },
+      data: payload,
       source,
       rounds,
-      payload: { source, rounds },
+      payload,
     });
   } catch (err) {
     next(err);
