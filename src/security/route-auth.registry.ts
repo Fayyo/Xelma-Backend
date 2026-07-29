@@ -88,8 +88,8 @@ export const ROUTE_AUTH_REGISTRY: RouteAuthEntry[] = [
   { method: "POST", path: "/api/admin/dead-letter/:id/retry", auth: RouteAuthLevel.ADMIN },
 
   // System / misc API
-  { method: "GET", path: "/api/prices", auth: RouteAuthLevel.PUBLIC, notes: "Multi-asset price ticker with stale flag" },
-  { method: "GET", path: "/api/price", auth: RouteAuthLevel.PUBLIC },
+  { method: "GET", path: "/api/prices", auth: RouteAuthLevel.PUBLIC, notes: "Multi-asset BTC/ETH/XLM ticker (not an alias of /api/price)" },
+  { method: "GET", path: "/api/price", auth: RouteAuthLevel.PUBLIC, notes: "Production-only XLM oracle (not an alias of /api/prices)" },
   { method: "GET", path: "/api/errors", auth: RouteAuthLevel.PUBLIC },
   { method: "GET", path: "/metrics", auth: RouteAuthLevel.PUBLIC },
   { method: "GET", path: "/health", auth: RouteAuthLevel.PUBLIC },
