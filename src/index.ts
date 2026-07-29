@@ -119,11 +119,13 @@ assertPreflightOrExit();
 validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
+logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
 
 const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
  * Create and configure the Express app without starting any background
