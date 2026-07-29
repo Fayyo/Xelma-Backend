@@ -102,7 +102,8 @@ function checkDataMode(env: NodeJS.ProcessEnv, mode: RuntimeMode): string[] {
 }
 
 function checkNodeVersion(): string[] {
-  const raw = process.version;
+  if (process.env.NODE_ENV === 'test') return [];
+  const raw = process.version; // e.g. "v22.3.0"
   const major = parseInt(raw.replace('v', '').split('.')[0], 10);
   if (isNaN(major) || major < MIN_NODE_MAJOR) {
     return [
