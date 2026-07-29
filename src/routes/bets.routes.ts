@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate.middleware";
 import { verifyStellarAuth, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { asyncHandler } from "../middleware/errorHandler.middleware";
 import { upDownBetSchema, precisionBetSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
 import {
@@ -44,7 +45,7 @@ router.post(
   "/up-down",
   verifyStellarAuth,
   validate(upDownBetSchema),
-  async (req: any, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user.userId;
     const endpoint = "/api/bets/up-down";
@@ -109,11 +110,11 @@ router.post(
       }
 
       if (error?.message?.includes("Circuit breaker")) {
-        return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
+        throw new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR);
       }
-      next(error);
+      throw error;
     }
-  }) as any,
+  }),
 );
 
 /**
@@ -147,7 +148,7 @@ router.post(
   "/precision",
   verifyStellarAuth,
   validate(precisionBetSchema),
-  async (req: any, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user.userId;
     const endpoint = "/api/bets/precision";
@@ -212,11 +213,11 @@ router.post(
       }
 
       if (error?.message?.includes("Circuit breaker")) {
-        return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
+        throw new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR);
       }
-      next(error);
+      throw error;
     }
-  }) as any,
+  }),
 );
 
 export default router;
