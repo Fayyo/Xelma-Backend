@@ -99,6 +99,14 @@ npm test               # run the test suite
 npm run build          # compile to dist/
 ```
 
+## Keeping the repo root clean
+
+Accidental empty files at the repo root (e.g. `src*.ts` leftovers from misplacing
+entries while creating new files) clutter search results and confuse contributors.
+Before committing, run `git status --short` and delete any zero-byte or stray
+`.ts` files that do not belong at the root. If your new file lives under `src/`,
+make sure it is created there — not at the repository root.
+
 ## Opening a pull request
 
 1. Branch off `main`.

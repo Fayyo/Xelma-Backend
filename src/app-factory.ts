@@ -56,6 +56,7 @@ import hackathonLeaderboardRoutes from './routes/leaderboard';
 import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { metricsMiddleware } from './middleware/metrics.middleware';
+import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler as hackathonErrorHandler } from './middleware/errorHandler';
 import { errorHandler as fullErrorHandler } from './middleware/errorHandler.middleware';
@@ -225,34 +226,10 @@ function mountBaseMiddleware(app: Application, mode: AppMode): void {
   // Correlation ID first, so everything downstream can log it.
   app.use(requestIdMiddleware);
   app.use(metricsMiddleware);
-  app.use(requestLogger(mode));
-}
-
-function requestLogger(mode: AppMode) {
-  if (mode === 'full') {
-    return (req: Request, _res: Response, next: NextFunction): void => {
-      logger.info(`${req.method} ${req.path}`, {
-        requestId: (req as any).requestId,
-      });
-      next();
-    };
-  }
-
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const startMs = Date.now();
-    // Capture the path before sub-router routing strips the mount prefix.
-    const path = req.originalUrl.split('?')[0];
-    res.on('finish', () => {
-      logger.info('http request', {
-        requestId: (req as any).requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: Date.now() - startMs,
-      });
-    });
-    next();
-  };
+  // Both modes log the same shape (method, path, status, durationMs,
+  // requestId) on response finish — see src/middleware/httpLogger.middleware.ts
+  // and src/tests/http-logger-unified.spec.ts (Issue #423).
+  app.use(httpLoggerMiddleware);
 }
 
 function mountApiDocs(app: Application, mode: AppMode): void {
