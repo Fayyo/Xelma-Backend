@@ -6,6 +6,8 @@ import { betSchema, upDownBetSchema, precisionBetSchema } from '../schemas/bets.
 
 import { getRepositories } from '../repositories';
 import roundService from '../services/round.service';
+import hackathonService from '../services/hackathon.service';
+import { toDecimalString } from '../utils/decimal.util';
 
 const router = Router();
 
