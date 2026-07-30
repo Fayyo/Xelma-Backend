@@ -3,6 +3,7 @@ import { validateStellarAddressParam } from '../utils/stellar-address.util';
 import hackathonService from '../services/hackathon.service';
 import sorobanService from '../services/soroban.service';
 import logger from '../utils/logger';
+import { sendSuccess } from '../utils/response';
 
 const router = Router();
 
@@ -69,7 +70,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
       // Convert pending winnings from stroops to XLM for the response
       const pendingWinningsXlm = Number(pendingWinnings) / 10_000_000;
 
-      return res.json({
+      return sendSuccess(res, {
         address,
         balance,
         pendingWinnings: pendingWinningsXlm,
@@ -89,7 +90,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
     logger.info('Soroban unavailable — returning DB/mock stats', { address });
     const stats = await hackathonService.getUserStats(address);
 
-    return res.json({
+    return sendSuccess(res, {
       address: stats.address,
       balance: stats.balance,
       pendingWinnings: stats.pendingWinnings,

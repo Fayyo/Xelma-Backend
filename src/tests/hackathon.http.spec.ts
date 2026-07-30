@@ -32,7 +32,8 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
     it('returns ok status and timestamp when soroban is initialized', async () => {
       const res = await request(app).get('/api/health');
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual(
         expect.objectContaining({
           status: 'ok',
           timestamp: expect.any(Number),
@@ -43,7 +44,7 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
     it('returns services block with price and soroban entries', async () => {
       const res = await request(app).get('/api/health');
       expect(res.status).toBe(200);
-      expect(res.body.services).toEqual(
+      expect(res.body.data.services).toEqual(
         expect.objectContaining({
           price: expect.objectContaining({
             status: 'ok',
@@ -64,14 +65,14 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
 
       const res = await request(app).get('/api/health');
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(
+      expect(res.body.data).toEqual(
         expect.objectContaining({
           status: 'degraded',
           timestamp: expect.any(Number),
         })
       );
-      expect(res.body.services.soroban.status).toBe('unavailable');
-      expect(res.body.services.soroban.initialized).toBe(false);
+      expect(res.body.data.services.soroban.status).toBe('unavailable');
+      expect(res.body.data.services.soroban.initialized).toBe(false);
     });
   });
 
@@ -200,7 +201,9 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
       expect(res.body).toEqual(
         expect.objectContaining({
           success: true,
-          message: expect.any(String),
+          data: expect.objectContaining({
+            message: expect.any(String),
+          }),
         })
       );
     });
@@ -231,7 +234,9 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
       expect(res.body).toEqual(
         expect.objectContaining({
           success: true,
-          message: expect.any(String),
+          data: expect.objectContaining({
+            message: expect.any(String),
+          }),
         })
       );
     });
@@ -244,16 +249,19 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
       const res = await request(app).get(`/api/user/${validStellarAddress}/stats`);
       
       expect(res.status).toBe(200);
-      expect(res.body).toEqual(
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual(
         expect.objectContaining({
-          address: expect.any(String),
-          balance: expect.any(Number),
-          pendingWinnings: expect.any(Number),
-          totalWins: expect.any(Number),
-          totalLosses: expect.any(Number),
-          currentStreak: expect.any(Number),
-          xp: expect.any(Number),
-          rankTitle: expect.any(String),
+          stats: expect.objectContaining({
+            totalWins: expect.any(Number),
+            totalLosses: expect.any(Number),
+            pendingWinnings: expect.any(String),
+          }),
+          profile: expect.objectContaining({
+            balance: expect.any(Number),
+            xp: expect.any(Number),
+            rankTitle: expect.any(String),
+          }),
         })
       );
     });
