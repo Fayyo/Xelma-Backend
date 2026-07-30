@@ -34,6 +34,12 @@ describe('Hackathon new routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.every((t: any) => t.status === 'ACTIVE')).toBe(true);
     });
+
+    it('filters by mode', async () => {
+      const res = await request(app).get('/api/tournaments?mode=LEGENDS');
+      expect(res.status).toBe(200);
+      expect(res.body.data.every((t: any) => t.mode === 'LEGENDS')).toBe(true);
+    });
   });
 
   describe('GET /api/tournaments/:id', () => {

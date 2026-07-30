@@ -77,17 +77,28 @@ export class HackathonService {
   }
 
   async placeBet(roundId: string, address: string, amount: number, side?: 'UP' | 'DOWN', predictedPrice?: number) {
-    // 1. Ensure user exists
-    await this.getUserStats(address);
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(hackathonUsers).where(eq(hackathonUsers.address, address));
+      if (existing.length === 0) {
+        await tx.insert(hackathonUsers).values({
+          address,
+          balance: 1000,
+          pendingWinnings: 0,
+          totalWins: 3,
+          totalLosses: 1,
+          currentStreak: 3,
+          xp: 410,
+          rankTitle: 'Rookie',
+        });
+      }
 
-    // 2. Insert bet
-    await db.insert(hackathonBets).values({
-      roundId,
-      address,
-      amount,
-      side,
-      predictedPrice,
-    });
+      await tx.insert(hackathonBets).values({
+        roundId,
+        address,
+        amount,
+        side,
+        predictedPrice,
+      });
 
     // 3. Update user balance
     const users = await db.select().from(hackathonUsers).where(eq(hackathonUsers.address, address));
@@ -119,7 +130,7 @@ export class HackathonService {
           })
           .where(eq(hackathonRounds.id, roundId));
       }
-    }
+    });
   }
 }
 

@@ -5,6 +5,7 @@ import { toDecimal } from "../utils/decimal.util";
 import { withTimeout, TimeoutResult } from "../utils/timeout-wrapper";
 import { CircuitBreaker, CircuitBreakerOpenError } from "../utils/circuit-breaker";
 import { Decimal } from "@prisma/client/runtime/library";
+import { mapSorobanError } from "../utils/errors";
 
 export interface SorobanHealth {
   initialized: boolean;
@@ -125,6 +126,8 @@ export class SorobanService {
     operation: () => Promise<TimeoutResult<T>>,
     fallback?: T,
   ): Promise<TimeoutResult<T>> {
+    const startMs = Date.now();
+
     try {
       const result = await this.breaker.execute(async () => {
         const timeoutResult = await operation();
@@ -133,9 +136,19 @@ export class SorobanService {
         }
         return timeoutResult;
       });
+
+      const latencySeconds = (Date.now() - startMs) / 1000;
+      sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
+      sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "success" });
+
       return result;
     } catch (error) {
+      const latencySeconds = (Date.now() - startMs) / 1000;
+      sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
+
       if (error instanceof CircuitBreakerOpenError) {
+        sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "breaker_open" });
+
         logger.warn("Skipped Soroban call because circuit breaker is open", {
           operationName,
           breaker: error.breakerName,
@@ -151,6 +164,8 @@ export class SorobanService {
           timedOut: false,
         };
       }
+
+      sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "failure" });
 
       if (error instanceof Error) {
         return {
@@ -215,7 +230,7 @@ export class SorobanService {
         timedOut: result.timedOut,
         durationMs: result.durationMs,
       });
-      throw new Error(`Soroban contract error: ${result.error?.message}`);
+      throw mapSorobanError(result.error?.message);
     }
 
     logger.info("Soroban round created successfully", {
@@ -274,7 +289,7 @@ export class SorobanService {
         timedOut: result.timedOut,
         durationMs: result.durationMs,
       });
-      throw new Error(`Soroban contract error: ${result.error?.message}`);
+      throw mapSorobanError(result.error?.message);
     }
 
     logger.info("Bet placed successfully on Soroban", {
@@ -332,7 +347,7 @@ export class SorobanService {
         timedOut: result.timedOut,
         durationMs: result.durationMs,
       });
-      throw new Error(`Soroban contract error: ${result.error?.message}`);
+      throw mapSorobanError(result.error?.message);
     }
 
     logger.info("Precision bet placed successfully on Soroban", {
@@ -389,7 +404,7 @@ export class SorobanService {
         timedOut: result.timedOut,
         durationMs: result.durationMs,
       });
-      throw new Error(`Soroban contract error: ${result.error?.message}`);
+      throw mapSorobanError(result.error?.message);
     }
 
     logger.info("Soroban round resolved successfully", {
@@ -464,7 +479,7 @@ export class SorobanService {
         timedOut: result.timedOut,
         durationMs: result.durationMs,
       });
-      throw new Error(`Soroban contract error: ${result.error?.message}`);
+      throw mapSorobanError(result.error?.message);
     }
 
     logger.info("Initial tokens minted successfully", {
