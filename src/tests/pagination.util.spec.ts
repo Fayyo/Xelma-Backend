@@ -9,6 +9,7 @@ import {
   encodeCursor,
   decodeCursor,
   buildOffsetMeta,
+  buildOffsetPage,
   buildCursorMeta,
   trimSentinel,
 } from "../utils/pagination.util";
@@ -78,6 +79,22 @@ describe("buildOffsetMeta", () => {
   it("hasNextPage is false when total is 0", () => {
     const meta = buildOffsetMeta(20, 0, 0);
     expect(meta.hasNextPage).toBe(false);
+  });
+});
+
+describe("buildOffsetPage", () => {
+  it("returns data with pagination { limit, offset, total }", () => {
+    const page = buildOffsetPage([{ id: 1 }, { id: 2 }], 10, 0, 2);
+    expect(page).toEqual({
+      data: [{ id: 1 }, { id: 2 }],
+      pagination: { limit: 10, offset: 0, total: 2 },
+    });
+  });
+
+  it("keeps empty data with total 0", () => {
+    const page = buildOffsetPage([], 20, 40, 0);
+    expect(page.data).toEqual([]);
+    expect(page.pagination).toEqual({ limit: 20, offset: 40, total: 0 });
   });
 });
 
