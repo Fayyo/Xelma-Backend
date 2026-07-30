@@ -6,6 +6,7 @@ import { withTimeout, TimeoutResult } from "../utils/timeout-wrapper";
 import { CircuitBreaker, CircuitBreakerOpenError } from "../utils/circuit-breaker";
 import { Decimal } from "@prisma/client/runtime/library";
 import { mapSorobanError } from "../utils/errors";
+import config from "../config";
 
 export interface SorobanHealth {
   initialized: boolean;
@@ -52,16 +53,15 @@ export class SorobanService {
 
   private async init(): Promise<void> {
     try {
-      const contractId = process.env.SOROBAN_CONTRACT_ID;
-      const network = process.env.SOROBAN_NETWORK || "testnet";
-      const rpcUrl =
-        process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
-      const adminSecret = process.env.SOROBAN_ADMIN_SECRET;
-      const oracleSecret = process.env.SOROBAN_ORACLE_SECRET;
+      const contractId = config.soroban.contractId;
+      const network = config.soroban.network;
+      const rpcUrl = config.soroban.rpcUrl;
+      const adminSecret = config.soroban.adminSecret;
+      const oracleSecret = config.soroban.oracleSecret;
 
       if (!contractId) {
         logger.warn(
-          "SOROBAN_CONTRACT_ID not set. Soroban integration DISABLED.",
+          "SOROBAN_CONTRACT_ID (or alias CONTRACT_ID) not set. Soroban integration DISABLED.",
         );
         this.initialized = false;
         return;
@@ -99,9 +99,9 @@ export class SorobanService {
     await this.ready;
     return {
       initialized: this.initialized,
-      contractId: process.env.SOROBAN_CONTRACT_ID || null,
-      network: process.env.SOROBAN_NETWORK || "testnet",
-      rpcUrl: process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org",
+      contractId: config.soroban.contractId || null,
+      network: config.soroban.network,
+      rpcUrl: config.soroban.rpcUrl,
       hasAdminKey: !!this.adminKeypair,
       hasOracleKey: !!this.oracleKeypair,
     };
@@ -604,7 +604,7 @@ export class SorobanService {
 
   private signWithAdmin(xdr: string): string {
     if (!this.adminKeypair) throw new Error("Admin keypair not set");
-    const network = process.env.SOROBAN_NETWORK || "testnet";
+    const network = config.soroban.network;
     const passphrase =
       network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
     const tx = new Transaction(xdr, passphrase);
@@ -614,7 +614,7 @@ export class SorobanService {
 
   private signWithOracle(xdr: string): string {
     if (!this.oracleKeypair) throw new Error("Oracle keypair not set");
-    const network = process.env.SOROBAN_NETWORK || "testnet";
+    const network = config.soroban.network;
     const passphrase =
       network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
     const tx = new Transaction(xdr, passphrase);

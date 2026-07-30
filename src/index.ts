@@ -29,6 +29,10 @@ import logger from './utils/logger';
 import { validateVendoredBindings } from './utils/bindings-validator';
 import { errorHandler } from './middleware/errorHandler.middleware';
 import config from './config';
+import {
+  formatResolvedSorobanConfigForLog,
+  resolveSorobanEnvVars,
+} from './config/env';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
@@ -121,6 +125,13 @@ validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
+logger.info(
+  'Soroban configuration resolved',
+  formatResolvedSorobanConfigForLog(resolveSorobanEnvVars(), {
+    rpcUrl: config.soroban.rpcUrl,
+    network: config.soroban.network,
+  }),
+);
 
 const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
