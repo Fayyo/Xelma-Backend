@@ -36,6 +36,7 @@ import {
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.middleware';
 import metricsRoutes from './routes/metrics.routes';
 import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
@@ -58,27 +59,6 @@ dotenv.config({ override: false });
 
 export { getHttpCorsOrigins } from './utils/cors';
 import { getHttpCorsOrigins } from './utils/cors';
-
-/**
- * Apply security headers to every response.
- * Prevents common browser-based attacks without adding helmet as a dependency.
- */
-function securityHeaders(
-   _req: Request,
-   res: Response,
-   next: NextFunction
-): void {
-   res.setHeader('X-Content-Type-Options', 'nosniff');
-   res.setHeader('X-Frame-Options', 'DENY');
-   res.setHeader('X-XSS-Protection', '1; mode=block');
-   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-   res.setHeader('Content-Security-Policy', "default-src 'self'");
-   res.setHeader(
-      'Permissions-Policy',
-      'geolocation=(), camera=(), microphone=()'
-   );
-   next();
-}
 
 const validateEnv = (): void => {
    if (!process.env.JWT_SECRET) {
@@ -137,6 +117,10 @@ const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info(
+  `Soroban money-path policy: ${config.soroban.failClosed ? "FAIL-CLOSED (abort on chain failure)" : "FAIL-OPEN (DB-only fallback allowed)"}`,
+  { SOROBAN_FAIL_CLOSED: config.soroban.failClosed },
+);
 logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
@@ -146,8 +130,8 @@ logger.info('Runtime modes documented at docs/runtime-modes.md');
 export function createApp(): Express {
    const app = express();
 
-   // Security headers (before all routes)
-   app.use(securityHeaders);
+   // Security headers (before all routes) — shared between main & hackathon apps
+   app.use(securityHeadersMiddleware);
 
    // CORS — origin allowlist is driven by CLIENT_URL / ALLOWED_ORIGINS env vars
    app.use(
@@ -242,23 +226,9 @@ export function createApp(): Express {
       });
     });
 
-    // Multi-asset prices via CoinGecko (BTC, ETH, XLM)
+    // Price endpoints: GET /api/prices (multi-asset) and GET /api/price (XLM oracle).
+    // These are intentionally different contracts — see OpenAPI / README.
    app.use('/api', pricesRoutes);
-
-    // Price Oracle endpoint (returns price_usd as a precise decimal string)
-   app.get('/api/price', (req: Request, res: Response) => {
-      const price = priceOracle.getPriceString();
-      const lastUpdatedAt = priceOracle.getLastUpdatedAt();
-      res.json({
-         asset: 'XLM',
-         price_usd: price,
-         stale: priceOracle.isStale(),
-         provider: priceOracle.getLastProvider(),
-         lastUpdatedAt: lastUpdatedAt?.toISOString() ?? null,
-         source: priceOracle.getActiveSource(),
-         timestamp: new Date().toISOString(),
-      });
-   });
 
    // 404 handler - forward to error handler for consistent response format
    app.use((req: Request, res: Response, next: NextFunction) => {

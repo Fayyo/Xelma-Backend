@@ -41,6 +41,12 @@ export interface SorobanConfig {
   rpcUrl: string;
   adminSecret: string;
   oracleSecret: string;
+  /**
+   * When true, money paths (bet/resolve) abort if Soroban chain verification
+   * fails. When false (default), demos may proceed with DB-only fallback.
+   * Production should set SOROBAN_FAIL_CLOSED=true.
+   */
+  failClosed: boolean;
 }
 
 export interface SchedulerConfig {
@@ -197,6 +203,8 @@ function buildConfig(): Config {
     ),
     adminSecret: v.optional(sorobanEnv.adminSecret, ""),
     oracleSecret: v.optional(sorobanEnv.oracleSecret, ""),
+    // Default fail-open for local/demo; production should set true.
+    failClosed: v.boolean(env.SOROBAN_FAIL_CLOSED, false),
   };
 
   const scheduler: SchedulerConfig = {
