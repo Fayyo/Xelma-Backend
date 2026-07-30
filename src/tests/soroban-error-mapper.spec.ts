@@ -14,6 +14,13 @@ describe("mapSorobanError", () => {
     expect(error.message).toBe("Insufficient funds for contract operation.");
   });
 
+  it("maps 'nothing to claim' to CONTRACT_INVALID_STATE", () => {
+    const error = mapSorobanError("HostError: nothing to claim");
+    expect(error).toBeInstanceOf(BusinessRuleError);
+    expect(error.code).toBe(ErrorCode.CONTRACT_INVALID_STATE);
+    expect(error.message).toBe("No claimable winnings available.");
+  });
+
   it("maps 'invalid state' to CONTRACT_INVALID_STATE BusinessRuleError", () => {
     const error = mapSorobanError("Error 14: invalid state in contract");
     expect(error).toBeInstanceOf(BusinessRuleError);

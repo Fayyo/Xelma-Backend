@@ -32,6 +32,7 @@ const integrationTestFiles = [
   "socket.spec.ts",
   "user.routes.spec.ts",
   "validate.middleware.spec.ts",
+  "redis-adapter.spec.ts",
 ];
 
 // Base configuration shared between unit and integration tests

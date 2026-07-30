@@ -158,6 +158,7 @@ The hackathon app and the production app share the same services, but the data b
 | Endpoint | `DATA_MODE=live` (default) | `DATA_MODE=mock` |
 |---|---|---|
 | `GET /api/prices` | CoinGecko API (30 s cache) | Static in-memory array (`mockData.prices` in [src/data/mockData.ts](src/data/mockData.ts)) |
+| `GET /api/price` | Production XLM oracle providers | Same oracle path (production app only; not mounted on hackathon) |
 | `GET /api/rounds` | Drizzle / Postgres (`hackathon_rounds` table) | Same â€” Drizzle is always used for rounds |
 | `GET /api/leaderboard` | Drizzle / Postgres leaderboard table | In-memory seed (`mockLeaderboard` in [src/data/mockData.ts](src/data/mockData.ts)) when `DATA_STORE=memory` |
 | `GET /api/stats` | Prisma / Postgres aggregation | `MOCK_PLATFORM_STATS` constants (zero-value defaults) |
@@ -432,9 +433,19 @@ The mapper in [src/utils/soroban-round.mapper.ts](src/utils/soroban-round.mapper
 - `GET /` - Health check with timestamp
 - `GET /health` - Detailed health check (uptime, status)
 - `GET /metrics` - Prometheus metrics for HTTP, schedulers, oracle, predictions, WebSocket, rate limits, and DB pool settings
-- `GET /api/price` - Current XLM/USD price as a decimal string with staleness info
+- `GET /api/price` - **Production only.** Current XLM/USD oracle price as a decimal string (`price_usd`) with staleness / provider info. **Not** an alias of `/api/prices`.
+- `GET /api/prices` - Multi-asset BTC / ETH / XLM ticker (CoinGecko, 30 s cache). Production returns the raw object; the hackathon app wraps it in `{ success, data }`. **Not** an alias of `/api/price`.
 - `GET /api-docs` - Swagger UI documentation
 - `GET /api-docs.json` - OpenAPI specification
+
+> **Price endpoints — pick the right path**
+>
+> | Path | App | Payload shape | Use when |
+> |------|-----|---------------|----------|
+> | `GET /api/price` | Production (`npm run dev` / `src/index.ts`) | `{ asset: "XLM", price_usd, stale, provider, lastUpdatedAt, source, timestamp }` | You need the XLM oracle feed |
+> | `GET /api/prices` | Production **and** hackathon (`npm run dev:hackathon` / `src/app.ts`) | `{ BTC, ETH, XLM, stale, lastUpdatedAt }` (hackathon: under `{ success, data }`) | You need a multi-asset price widget |
+>
+> Keeping both is intentional: they are different contracts, not duplicates. Do not call `/api/price` against the hackathon app (it is not mounted there). Unversioned production `/api/*` routes also send `Deprecation` / `Sunset` headers toward a future `/api/v1` successor; that does **not** mean `/api/price` is deprecated in favor of `/api/prices`.
 
 ---
 
@@ -750,7 +761,7 @@ Core application metrics include:
 ### 3. Set Up Database
 
 ```bash
-# Generate Prisma client and apply committed migrations
+# Generate the Prisma client and apply ALL committed migrations
 npm run db:prepare
 
 # Create a new development migration when changing prisma/schema.prisma
@@ -759,6 +770,17 @@ npm run prisma:migrate
 # (Optional) Seed database with sample data
 npx prisma db seed
 ```
+
+#### Migration story (two schemas, one command)
+
+This project uses **two migration tools against the same PostgreSQL database**:
+
+| Tool | Owns | Migrations live in | Applied by |
+|---|---|---|---|
+| **Prisma** | Core schema — users, rounds, predictions, tournaments, etc. | `prisma/migrations/` | `prisma migrate deploy` |
+| **Drizzle** | Hackathon/demo schema — `hackathon_users`, `hackathon_rounds`, `hackathon_bets` (see [src/db/schema.ts](src/db/schema.ts)) | `drizzle/` | `drizzle-kit migrate` |
+
+You never run those two commands by hand. **`npm run db:migrate` applies both, in order** (Prisma first, then Drizzle), and `npm run db:prepare` is `prisma generate` followed by `db:migrate`. This one command is exactly what CI (`.github/workflows/ci.yml`) and the deploy workflow run, so local, CI, and production stay identical. When you change [prisma/schema.prisma](prisma/schema.prisma) use `npm run prisma:migrate`; when you change [src/db/schema.ts](src/db/schema.ts) generate a Drizzle migration with `npx drizzle-kit generate` and commit the new file under `drizzle/`.
 
 > **Note**: Never commit your `.env` file. It contains sensitive credentials.
 
@@ -1267,6 +1289,17 @@ npm run test:hackathon
 npm run test:load
 ```
 
+### Redis Socket.IO adapter integration test
+
+src/tests/redis-adapter.spec.ts proves that Socket.IO room broadcasts fan out across two independent server instances via the Redis adapter (simulating a multi-instance deployment). It is skipped automatically when REDIS_URL is not set, so it never blocks the default unit test run.
+
+To run it locally:
+
+```bash
+docker compose --profile full up -d redis
+REDIS_URL=redis://localhost:6379 npx jest --testPathPattern=redis-adapter
+```
+
 Coverage thresholds are enforced in `jest.config.ts`. The current floors are:
 - Branches: 70%
 - Functions: 50%
@@ -1336,9 +1369,11 @@ At minimum, migration PRs should include:
 | `npm run test:load` | Run repeatable load baselines for prediction throughput and websocket fanout (#21) |
 | `npm run ci` | Run lint, build, unit coverage, and integration tests |
 | `npm run prisma:generate` | Generate Prisma client |
-| `npm run prisma:migrate` | Run database migrations |
-| `npm run prisma:migrate:deploy` | Apply committed migrations without creating new migration files |
-| `npm run db:prepare` | Run Prisma generate and migrate deploy |
+| `npm run prisma:migrate` | Create/apply a Prisma dev migration for the core schema |
+| `npm run prisma:migrate:deploy` | Apply committed Prisma migrations without creating new ones |
+| `npm run db:migrate:hackathon` | Apply committed Drizzle migrations for the hackathon schema |
+| `npm run db:migrate` | Apply **all** committed migrations — Prisma core schema then Drizzle hackathon schema |
+| `npm run db:prepare` | Generate the Prisma client, then run `db:migrate` (the one-command DB setup used by CI and deploys) |
 | `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
 | `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
 | `npm run docs:postman` | Export Postman collection |
@@ -2236,21 +2271,16 @@ docker compose up -d postgres
 cp .env.hackathon.example .env
 # Edit .env â†’ set DATABASE_URL and JWT_SECRET
 
-# 3. Generate Prisma client & apply core migrations
-npm run prisma:generate
-npx prisma migrate deploy
+# 3. Apply all database migrations (Prisma core schema + Drizzle hackathon schema)
+npm run db:prepare
 
-# 4. Generate & apply Drizzle migrations for hackathon schema
-npx drizzle-kit generate
-npx ts-node src/db/migrate.ts
-
-# 5. Seed initial mock rounds and user data to Postgres
+# 4. Seed initial mock rounds and user data to Postgres
 npx ts-node src/db/seed.ts
 
 # Optional: seed joinable demo tournaments for /api/tournaments
 npm run db:seed:tournaments
 
-# 6. Start the server
+# 5. Start the server
 npm run dev
 ```
 
@@ -2279,10 +2309,18 @@ The server starts on `http://localhost:3001` (or the `PORT` in `.env`).
 curl http://localhost:3001/health
 ```
 
-#### Get XLM Price
+#### Get Multi-Asset Prices (hackathon)
 
 ```bash
-curl http://localhost:3001/api/price
+curl http://localhost:3001/api/prices
+```
+
+> Use `/api/prices` on the hackathon app. `/api/price` is the **production-only** XLM oracle endpoint and is not mounted on port 3001.
+
+#### Get XLM Oracle Price (production)
+
+```bash
+curl http://localhost:3000/api/price
 ```
 
 #### Auth: Request Challenge

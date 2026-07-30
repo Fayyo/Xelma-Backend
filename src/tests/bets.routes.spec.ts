@@ -47,8 +47,10 @@ describe("Bets Routes", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
-        state: "stub",
+        data: {
+          message: "Bet recorded (stub)",
+          state: "stub",
+        },
       });
     });
 
@@ -65,9 +67,11 @@ describe("Bets Routes", () => {
       expect(sorobanService.placeBet).toHaveBeenCalledWith(VALID_ADDRESS, 10, "UP");
       expect(res.body).toEqual({
         success: true,
-        message: "Bet placed on-chain",
-        state: "on-chain-success",
-        txHash: "0x123",
+        data: {
+          message: "Bet placed on-chain",
+          state: "on-chain-success",
+          txHash: "0x123",
+        },
       });
     });
 
@@ -258,8 +262,10 @@ describe("Bets Routes", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
-        state: "stub",
+        data: {
+          message: "Bet recorded (stub)",
+          state: "stub",
+        },
       });
     });
 
@@ -276,9 +282,11 @@ describe("Bets Routes", () => {
       expect(sorobanService.placePrecisionBet).toHaveBeenCalledWith(VALID_ADDRESS, 5, 0.12);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet placed on-chain",
-        state: "on-chain-success",
-        txHash: "0x456",
+        data: {
+          message: "Bet placed on-chain",
+          state: "on-chain-success",
+          txHash: "0x456",
+        },
       });
     });
 

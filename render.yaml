@@ -33,6 +33,7 @@ services:
         value: "3000"
       - key: JWT_SECRET
         sync: false
+      # No DATABASE_URL needed — DATA_MODE=mock uses in-process data
       - key: DATA_MODE
         value: mock
       - key: ENABLE_MULTIPLAYER_SOCIAL

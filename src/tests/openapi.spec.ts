@@ -9,6 +9,8 @@ const REQUIRED_OPERATIONS: Array<{ path: string; method: string }> = [
   { path: "/api/chat/send", method: "post" },
   { path: "/api/admin/metrics/rate-limits", method: "get" },
   { path: "/api/rounds/start", method: "post" },
+  { path: "/api/price", method: "get" },
+  { path: "/api/prices", method: "get" },
 ];
 
 describe("OpenAPI spec", () => {
@@ -18,6 +20,17 @@ describe("OpenAPI spec", () => {
     for (const { path, method } of REQUIRED_OPERATIONS) {
       expect(paths[path]?.[method]).toBeDefined();
     }
+  });
+
+  it("documents distinct /api/price vs /api/prices contracts", () => {
+    const paths = (swaggerSpec as { paths?: Record<string, any> }).paths ?? {};
+    const priceOp = paths["/api/price"]?.get;
+    const pricesOp = paths["/api/prices"]?.get;
+
+    expect(priceOp?.summary).toMatch(/XLM oracle/i);
+    expect(pricesOp?.summary).toMatch(/multi-asset/i);
+    expect(String(priceOp?.description ?? "")).toMatch(/Do not confuse with.*\/api\/prices/i);
+    expect(String(pricesOp?.description ?? "")).toMatch(/Do not confuse with.*\/api\/price/i);
   });
 
   it("documents 429 response on batch prediction submit", () => {

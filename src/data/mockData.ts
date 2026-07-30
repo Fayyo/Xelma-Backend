@@ -9,6 +9,7 @@ import { mockDataRepository } from '../repositories/mockData.repository';
  * GET /api/leaderboard              Drizzle/Postgres          mockLeaderboard (in-memory seed)
  * GET /api/stats                    Prisma/Postgres           MOCK_PLATFORM_STATS (in-memory)
  * GET /api/prices  (priceService)   CoinGecko (30s cache)     mockData.prices (in-memory)
+ * GET /api/price   (oracle, prod)   XLM oracle providers      n/a on hackathon — use /api/prices
  * GET /api/health  (soroban)        live soroban RPC          soroban.isReady() flag only
  * ─────────────────────────────────────────────────────────────────────────────
  *
@@ -111,8 +112,11 @@ export const mockData = {
 };
 
 /**
- * Zero-value platform stats returned by the stats service when both the
- * Drizzle and Prisma stores are empty or unreachable.
+ * Seed platform stats returned by the stats service when DATA_MODE=mock or
+ * the database is unreachable. In live mode with an empty database the service
+ * returns legitimate zeros with isFallback=false so dashboards can distinguish
+ * "no data yet" from "reading mock constants".
+ *
  * Env flag: DATA_MODE=mock causes the stats service to use these values
  * instead of querying Postgres.
  */
