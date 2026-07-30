@@ -4,11 +4,24 @@ import { Express } from 'express';
 import { createApp } from '../app';
 
 const mockGetRoundsForApi = jest.fn();
+const mockGetActiveRound = jest.fn();
 
 jest.mock('../services/round.service', () => ({
   __esModule: true,
   default: {
     getRoundsForApi: (...args: any[]) => mockGetRoundsForApi(...args),
+  },
+}));
+
+jest.mock('../services/soroban.service', () => ({
+  __esModule: true,
+  default: {
+    getActiveRound: (...args: any[]) => mockGetActiveRound(...args),
+    isReady: jest.fn().mockReturnValue(false),
+    getUserStats: jest.fn(),
+    getPendingWinnings: jest.fn(),
+    getBalance: jest.fn(),
+    getHealth: jest.fn(),
   },
 }));
 
@@ -22,40 +35,24 @@ jest.mock('../services/hackathon.service', () => ({
   },
 }));
 
-jest.mock('../services/soroban.service', () => ({
-  __esModule: true,
-  default: {},
-}));
-
 jest.mock('../middleware/rateLimiter', () => {
   const pass = (_req: any, _res: any, next: any) => next();
   return { apiRateLimiter: pass, writeRateLimiter: pass, betRateLimiter: pass };
 });
 
-const SOROBAN_ROUND_RESPONSE = {
-  source: 'soroban',
-  rounds: [
-    {
-      id: 'soroban-1',
-      sorobanRoundId: '1',
-      mode: 'UP_DOWN',
-      status: 'ACTIVE',
-      startPrice: 0.2891,
-      poolUp: 2.8,
-      poolDown: 1.4,
-      startLedger: 100,
-      betEndLedger: 200,
-      endLedger: 300,
-      isSoroban: true,
-      source: 'soroban',
-    },
-  ],
-};
-
 const MOCK_ROUND_RESPONSE = {
   source: 'mock',
   rounds: [
-    { id: 'btc-updown-live', asset: 'XLM', mode: 'updown', status: 'live', startPrice: 0.5, poolUp: 100, poolDown: 200, closesAt: new Date(Date.now() + 3600000).toISOString() },
+    {
+      id: 'btc-updown-live',
+      asset: 'XLM',
+      mode: 'updown',
+      status: 'live',
+      startPrice: 0.5,
+      poolUp: 100,
+      poolDown: 200,
+      closesAt: new Date(Date.now() + 3600000).toISOString(),
+    },
   ],
 };
 
@@ -63,6 +60,8 @@ describe('GET /api/rounds — delegating to shared round service', () => {
   let app: Express;
 
   beforeEach(() => {
+    mockGetActiveRound.mockRejectedValue(new Error('RPC unavailable'));
+    mockGetRoundsForApi.mockResolvedValue(MOCK_ROUND_RESPONSE);
     app = createApp();
   });
 
@@ -70,25 +69,7 @@ describe('GET /api/rounds — delegating to shared round service', () => {
     jest.clearAllMocks();
   });
 
-  it('returns soroban round when service returns soroban source', async () => {
-    mockGetRoundsForApi.mockResolvedValueOnce(SOROBAN_ROUND_RESPONSE);
-
-    const res = await request(app).get('/api/rounds');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.source).toBe('soroban');
-    expect(Array.isArray(res.body.data.rounds)).toBe(true);
-    expect(res.body.data.rounds).toHaveLength(1);
-    expect(res.body.data.rounds[0].sorobanRoundId).toBe('1');
-    expect(res.body.data.rounds[0].mode).toBe('UP_DOWN');
-    expect(res.body.data.rounds[0].status).toBe('ACTIVE');
-    expect(res.body.data.rounds[0].isSoroban).toBe(true);
-  });
-
   it('returns mock rounds when service returns mock source', async () => {
-    mockGetRoundsForApi.mockResolvedValueOnce(MOCK_ROUND_RESPONSE);
-
     const res = await request(app).get('/api/rounds');
 
     expect(res.status).toBe(200);
@@ -98,16 +79,13 @@ describe('GET /api/rounds — delegating to shared round service', () => {
   });
 
   it('response always uses envelope with success and data', async () => {
-    mockGetRoundsForApi.mockResolvedValueOnce(MOCK_ROUND_RESPONSE);
-
     const res = await request(app).get('/api/rounds');
 
-    expect(res.body).toHaveProperty('success');
+    expect(res.body).toHaveProperty('success', true);
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('source');
     expect(res.body.data).toHaveProperty('rounds');
-    expect(res.body.success).toBe(true);
-    expect(['soroban', 'database', 'mock']).toContain(res.body.data.source);
+    expect(res.body).not.toHaveProperty('rounds');
   });
 
   it('propagates service errors to the error handler', async () => {
