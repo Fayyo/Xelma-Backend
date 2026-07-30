@@ -66,7 +66,7 @@ export class RoundService {
         try {
           await sorobanService.createRound(startPriceDecimal, 0);
         } catch (e) {
-          logger.warn("Soroban createRound failed, proceeding with DB-only round:", e);
+          sorobanService.applyMoneyPathFailure("createRound", e);
         }
       }
 

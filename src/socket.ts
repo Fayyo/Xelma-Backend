@@ -31,39 +31,8 @@ let activeStaleInterval: NodeJS.Timeout | null = null;
 let activeTokenExpiryInterval: NodeJS.Timeout | null = null;
 let ioInstance: SocketIOServer | null = null;
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
-export function getCorsOrigins(): string | string[] {
-   const clientUrl = process.env.CLIENT_URL;
-
-   if (IS_PRODUCTION) {
-      if (!clientUrl) {
-         throw new Error(
-            'CLIENT_URL environment variable is required in production. ' +
-               'Socket.IO CORS cannot use wildcard origin (*) with credentials enabled.'
-         );
-      }
-      const additionalOrigins = process.env.ALLOWED_ORIGINS;
-      if (additionalOrigins) {
-         return [clientUrl, ...additionalOrigins.split(',').map(o => o.trim())];
-      }
-      return clientUrl;
-   }
-
-   if (!clientUrl) {
-      logger.warn(
-         'CLIENT_URL not set; allowing all origins for development. ' +
-            'Set CLIENT_URL to restrict origins.'
-      );
-      return '*';
-   }
-
-   const additionalOrigins = process.env.ALLOWED_ORIGINS;
-   if (additionalOrigins) {
-      return [clientUrl, ...additionalOrigins.split(',').map(o => o.trim())];
-   }
-   return clientUrl;
-}
+export { getCorsOrigins } from './utils/cors';
+import { getCorsOrigins } from './utils/cors';
 
 // Extended socket with walletAddress attached directly alongside SocketData
 interface AuthenticatedSocket extends TypedSocket {

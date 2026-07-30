@@ -4,11 +4,24 @@ import { Express } from 'express';
 import { createApp } from '../app';
 
 const mockGetRoundsForApi = jest.fn();
+const mockGetActiveRound = jest.fn();
 
 jest.mock('../services/round.service', () => ({
   __esModule: true,
   default: {
     getRoundsForApi: (...args: any[]) => mockGetRoundsForApi(...args),
+  },
+}));
+
+jest.mock('../services/soroban.service', () => ({
+  __esModule: true,
+  default: {
+    getActiveRound: (...args: any[]) => mockGetActiveRound(...args),
+    isReady: jest.fn().mockReturnValue(false),
+    getUserStats: jest.fn(),
+    getPendingWinnings: jest.fn(),
+    getBalance: jest.fn(),
+    getHealth: jest.fn(),
   },
 }));
 
@@ -81,6 +94,8 @@ describe('GET /api/rounds — delegating to shared round service', () => {
   let app: Express;
 
   beforeEach(() => {
+    mockGetActiveRound.mockRejectedValue(new Error('RPC unavailable'));
+    mockGetRoundsForApi.mockResolvedValue(MOCK_ROUND_RESPONSE);
     app = createApp();
   });
 
@@ -154,7 +169,7 @@ describe('GET /api/rounds — delegating to shared round service', () => {
 
     const res = await request(app).get('/api/rounds');
 
-    expect(res.body).toHaveProperty('success');
+    expect(res.body).toHaveProperty('success', true);
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('source');
     expect(res.body.data).toHaveProperty('rounds');

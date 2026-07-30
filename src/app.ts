@@ -1,6 +1,5 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import healthRoutes from './routes/health';
@@ -22,6 +21,8 @@ import { hackathonSwaggerSpec } from './docs/hackathon-openapi';
 import config from './config';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.middleware';
+import logger from './utils/logger';
 
 export interface CreateAppOptions {
   includeErrorHandlers?: boolean;
@@ -40,7 +41,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
       credentials: true,
     })
   );
-  app.use(helmet());
+  app.use(securityHeadersMiddleware);
 
   // Assign a correlation ID to every request and expose it on the response header
   app.use(requestIdMiddleware);

@@ -73,7 +73,7 @@ const hackathonBetAuth = [
 
 // TODO: Call contract via Xelma TypeScript bindings — bets must go on-chain; this endpoint is logging/analytics only for now
 router.post('/:id/bet', betRateLimiter, ...hackathonBetAuth, validate(betSchema), (_req, res) => {
-  res.json({ success: true, message: 'Bet recorded (stub)' });
+  sendSuccess(res, { message: 'Bet recorded (stub)' });
 });
 
 // Hackathon mutation endpoints - with Zod validation for consistent error handling

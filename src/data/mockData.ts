@@ -9,6 +9,7 @@ import { mockDataRepository } from '../repositories/mockData.repository';
  * GET /api/leaderboard              Drizzle/Postgres          mockLeaderboard (in-memory seed)
  * GET /api/stats                    Prisma/Postgres           MOCK_PLATFORM_STATS (in-memory)
  * GET /api/prices  (priceService)   CoinGecko (30s cache)     mockData.prices (in-memory)
+ * GET /api/price   (oracle, prod)   XLM oracle providers      n/a on hackathon — use /api/prices
  * GET /api/health  (soroban)        live soroban RPC          soroban.isReady() flag only
  * ─────────────────────────────────────────────────────────────────────────────
  *
