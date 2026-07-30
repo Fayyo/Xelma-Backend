@@ -37,6 +37,8 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
         },
         PriceResponse: {
           type: 'object',
+          description:
+            'Multi-asset ticker payload inside the success envelope from GET /api/prices. The hackathon app does not expose GET /api/price (that path is production-only XLM oracle).',
           properties: {
             BTC: { type: 'number', example: 67420.12 },
             ETH: { type: 'number', example: 3241.55 },
@@ -145,7 +147,11 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     },
     tags: [
       { name: 'health', description: 'Service health checks' },
-      { name: 'prices', description: 'Live crypto prices (CoinGecko)' },
+      {
+        name: 'prices',
+        description:
+          'Multi-asset live crypto prices via GET /api/prices (CoinGecko). Not the same as production GET /api/price (XLM oracle).',
+      },
       { name: 'stats', description: 'Platform statistics' },
       { name: 'rounds', description: 'Mock prediction rounds' },
       { name: 'leaderboard', description: 'Mock leaderboard data' },

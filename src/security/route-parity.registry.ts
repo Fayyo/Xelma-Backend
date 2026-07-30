@@ -14,12 +14,24 @@ export interface ParityAllowlistEntry {
   reason: string;
 }
 
-export const VERSIONED_ALIAS_ALLOWLIST: string[] = ["GET /price"];
+export const VERSIONED_ALIAS_ALLOWLIST: string[] = [
+  // Single-asset XLM oracle — intentionally no /api/v1/price mirror yet.
+  "GET /price",
+  // Multi-asset ticker is mounted after the v1 router today; keep unversioned
+  // until /api/v1/prices is wired. Distinct from GET /price (different payload).
+  "GET /prices",
+];
 
 export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/", only: "main", reason: "Root welcome banner is production-only." },
   { method: "GET", path: "/health", only: "main", reason: "Production health probe is mounted at /health; the hackathon app mounts it under /api." },
-  { method: "GET", path: "/api/price", only: "main", reason: "Production single-asset XLM price endpoint; the hackathon app serves /api/prices instead." },
+  {
+    method: "GET",
+    path: "/api/price",
+    only: "main",
+    reason:
+      "Production single-asset XLM oracle endpoint (distinct payload from /api/prices). Hackathon clients must use /api/prices.",
+  },
   { method: "GET", path: "/api/errors", only: "main", reason: "Production error catalog is not part of the mock demo." },
   { method: "POST", path: "/api/auth/challenge", only: "main", reason: "Wallet auth flow is not part of the mock demo." },
   { method: "POST", path: "/api/auth/connect", only: "main", reason: "Wallet auth flow is not part of the mock demo." },
@@ -56,7 +68,7 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "POST", path: "/api/admin/dead-letter/retry-all", only: "main", reason: "Admin surface is production-only." },
   { method: "POST", path: "/api/admin/dead-letter/:id/retry", only: "main", reason: "Admin surface is production-only." },
   { method: "GET", path: "/api", only: "hackathon", reason: "Hackathon app mounts the health router under /api instead of /health." },
-  { method: "GET", path: "/api/prices", only: "hackathon", reason: "Hackathon multi-asset mock price ticker; production serves /api/price." },
+  // GET /api/prices is shared by both apps (multi-asset ticker) — not allowlisted.
   { method: "GET", path: "/api/stats", only: "hackathon", reason: "Landing-page platform stats are hackathon-only." },
   { method: "GET", path: "/api/rounds", only: "hackathon", reason: "Hackathon mock rounds collection; production exposes /api/rounds/active and /api/rounds/:id." },
   { method: "POST", path: "/api/rounds/:id/bet", only: "hackathon", reason: "Hackathon mock bet stub." },

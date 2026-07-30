@@ -215,23 +215,9 @@ export function createApp(): Express {
       });
     });
 
-    // Multi-asset prices via CoinGecko (BTC, ETH, XLM)
+    // Price endpoints: GET /api/prices (multi-asset) and GET /api/price (XLM oracle).
+    // These are intentionally different contracts — see OpenAPI / README.
    app.use('/api', pricesRoutes);
-
-    // Price Oracle endpoint (returns price_usd as a precise decimal string)
-   app.get('/api/price', (req: Request, res: Response) => {
-      const price = priceOracle.getPriceString();
-      const lastUpdatedAt = priceOracle.getLastUpdatedAt();
-      res.json({
-         asset: 'XLM',
-         price_usd: price,
-         stale: priceOracle.isStale(),
-         provider: priceOracle.getLastProvider(),
-         lastUpdatedAt: lastUpdatedAt?.toISOString() ?? null,
-         source: priceOracle.getActiveSource(),
-         timestamp: new Date().toISOString(),
-      });
-   });
 
    // 404 handler - forward to error handler for consistent response format
    app.use((req: Request, res: Response, next: NextFunction) => {
