@@ -126,6 +126,10 @@ const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info(
+  `Soroban money-path policy: ${config.soroban.failClosed ? "FAIL-CLOSED (abort on chain failure)" : "FAIL-OPEN (DB-only fallback allowed)"}`,
+  { SOROBAN_FAIL_CLOSED: config.soroban.failClosed },
+);
 logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
