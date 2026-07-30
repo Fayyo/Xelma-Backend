@@ -1,7 +1,11 @@
 import { Router, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate.middleware";
-import { verifyStellarAuth, AuthenticatedRequest } from "../middleware/auth.middleware";
-import { upDownBetSchema, precisionBetSchema } from "../schemas/bets.schema";
+import {
+  verifyStellarAuth,
+  bindAuthenticatedWallet,
+  AuthenticatedRequest,
+} from "../middleware/auth.middleware";
+import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
 import {
   acquireIdempotencyLock,
@@ -213,6 +217,131 @@ router.post(
 
       if (error?.message?.includes("Circuit breaker")) {
         return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
+      }
+      next(error);
+    }
+  }) as any,
+);
+
+/**
+ * @swagger
+ * /api/bets/claim:
+ *   post:
+ *     summary: Claim pending Soroban winnings
+ *     tags: [bets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: Idempotency-Key
+ *         schema: { type: string }
+ *         required: false
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               address: { type: string, description: "Optional; must match JWT wallet when provided" }
+ *     responses:
+ *       200:
+ *         description: Claim recorded or submitted on-chain
+ *       401:
+ *         description: Missing or invalid JWT
+ *       403:
+ *         description: Wallet address mismatch
+ *       409:
+ *         description: Idempotency key conflict
+ *       422:
+ *         description: No claimable winnings / invalid contract state
+ *       503:
+ *         description: Contract interaction failed
+ */
+router.post(
+  "/claim",
+  verifyStellarAuth,
+  (req, _res, next) => {
+    req.body = req.body ?? {};
+    next();
+  },
+  bindAuthenticatedWallet,
+  validate(claimWinningsSchema),
+  (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
+    const userId = req.user!.userId;
+    const endpoint = "/api/bets/claim";
+    let lockAcquired = false;
+
+    try {
+      if (idempotencyKey) {
+        if (!isValidIdempotencyKey(idempotencyKey)) {
+          throw new ValidationError(
+            "Invalid Idempotency-Key format. Must be 8-255 alphanumeric characters."
+          );
+        }
+
+        const lockResult = await acquireIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          req.body,
+          24
+        );
+
+        if (lockResult.isIdempotent && lockResult.cachedResponse) {
+          return res
+            .status(lockResult.cachedResponse.status)
+            .json(lockResult.cachedResponse.body);
+        }
+
+        if (lockResult.error) {
+          throw new ConflictError(
+            lockResult.error,
+            ErrorCode.IDEMPOTENCY_KEY_CONFLICT
+          );
+        }
+
+        lockAcquired = !!lockResult.lockAcquired;
+      }
+
+      const result = await betService.claimWinnings(req.body.address, idempotencyKey);
+      const responseBody = {
+        success: true,
+        message:
+          result.state === "stub"
+            ? "Claim recorded (stub)"
+            : "Winnings claimed on-chain",
+        state: result.state,
+        amount: result.amount,
+        ...(result.txHash ? { txHash: result.txHash } : {}),
+      };
+
+      if (idempotencyKey && lockAcquired) {
+        await storeIdempotencyResult(
+          userId,
+          endpoint,
+          idempotencyKey,
+          req.body,
+          200,
+          responseBody,
+          { ttlHours: 24 }
+        );
+      }
+
+      res.json(responseBody);
+    } catch (error: any) {
+      if (idempotencyKey && lockAcquired) {
+        await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error?.message?.includes("Circuit breaker")) {
+        return next(
+          new ExternalServiceError(
+            "Contract interaction failed. Please try again.",
+            ErrorCode.EXTERNAL_SERVICE_ERROR
+          )
+        );
       }
       next(error);
     }

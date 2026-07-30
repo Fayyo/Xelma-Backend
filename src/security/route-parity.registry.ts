@@ -38,6 +38,7 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "POST", path: "/api/rounds/:id/simulate", only: "main", reason: "Round simulation is production-only." },
   { method: "POST", path: "/api/bets/up-down", only: "main", reason: "Authenticated bet placement is production-only." },
   { method: "POST", path: "/api/bets/precision", only: "main", reason: "Authenticated bet placement is production-only." },
+  { method: "POST", path: "/api/bets/claim", only: "main", reason: "Authenticated claim/payout is production-only." },
   { method: "POST", path: "/api/predictions/submit", only: "main", reason: "Prediction submission is production-only." },
   { method: "POST", path: "/api/predictions/batch-submit", only: "main", reason: "Prediction submission is production-only." },
   { method: "GET", path: "/api/predictions/user", only: "main", reason: "Prediction history is production-only." },

@@ -51,6 +51,7 @@ export const ROUTE_AUTH_REGISTRY: RouteAuthEntry[] = [
   // Bets (JWT required — wallet bound from token)
   { method: "POST", path: "/api/bets/up-down", auth: RouteAuthLevel.AUTHENTICATED },
   { method: "POST", path: "/api/bets/precision", auth: RouteAuthLevel.AUTHENTICATED },
+  { method: "POST", path: "/api/bets/claim", auth: RouteAuthLevel.AUTHENTICATED },
 
   // Predictions
   { method: "POST", path: "/api/predictions/submit", auth: RouteAuthLevel.AUTHENTICATED },
