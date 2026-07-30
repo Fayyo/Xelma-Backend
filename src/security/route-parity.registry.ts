@@ -21,7 +21,13 @@ export interface ParityAllowlistEntry {
   flag: string;
 }
 
-export const VERSIONED_ALIAS_ALLOWLIST: string[] = ["GET /price"];
+export const VERSIONED_ALIAS_ALLOWLIST: string[] = [
+  // Single-asset XLM oracle — intentionally no /api/v1/price mirror yet.
+  "GET /price",
+  // Multi-asset ticker is mounted after the v1 router today; keep unversioned
+  // until /api/v1/prices is wired. Distinct from GET /price (different payload).
+  "GET /prices",
+];
 
 export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   // --- rootBanner ---

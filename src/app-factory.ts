@@ -23,7 +23,6 @@ import express, {
   Router,
 } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 
 import authRoutes from './routes/auth.routes';
@@ -42,7 +41,7 @@ import deadLetterRoutes from './routes/admin-dead-letter.routes';
 import healthRoutes from './routes/health';
 import statsRoutes from './routes/stats';
 import indexRoutes from './routes/index';
-import pricesRoutes from './routes/prices';
+import pricesRoutes, { legacyXlmPriceRouter } from './routes/prices';
 
 // The two entrypoints deliberately serve different round and leaderboard
 // surfaces: the full app exposes the production routers, the hackathon app
@@ -57,13 +56,13 @@ import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.middleware';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler as hackathonErrorHandler } from './middleware/errorHandler';
 import { errorHandler as fullErrorHandler } from './middleware/errorHandler.middleware';
 import { getHttpCorsOrigins } from './utils/cors';
 import { swaggerSpec } from './docs/openapi';
 import { hackathonSwaggerSpec } from './docs/hackathon-openapi';
-import priceOracle from './services/oracle';
 import config from './config';
 import logger from './utils/logger';
 
@@ -180,30 +179,11 @@ export function resolveFeatures(
   return resolved;
 }
 
-/**
- * Apply security headers to every response.
- * Prevents common browser-based attacks without adding helmet as a dependency.
- */
-function securityHeaders(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'");
-  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
-  next();
-}
-
 function mountBaseMiddleware(app: Application, mode: AppMode): void {
-  if (mode === 'full') {
-    // Hand-rolled headers rather than helmet: the full app pins an explicit
-    // CSP and Permissions-Policy that helmet's defaults do not set.
-    app.use(securityHeaders);
-  }
+  // One helmet configuration for both modes — the shared middleware pins the
+  // explicit CSP, frameguard, Referrer-Policy, legacy X-XSS-Protection and
+  // Permissions-Policy that helmet's defaults do not set (Issue #414/#480).
+  app.use(securityHeadersMiddleware);
 
   app.use(express.json());
   if (mode === 'full') {
@@ -218,10 +198,6 @@ function mountBaseMiddleware(app: Application, mode: AppMode): void {
       credentials: true,
     }),
   );
-
-  if (mode === 'hackathon') {
-    app.use(helmet());
-  }
 
   // Correlation ID first, so everything downstream can log it.
   app.use(requestIdMiddleware);
@@ -379,19 +355,9 @@ export function createApp(options: CreateAppOptions = {}): Application {
     }
 
     if (features.legacyPriceEndpoint) {
-      app.get('/api/price', (_req: Request, res: Response) => {
-        const price = priceOracle.getPriceString();
-        const lastUpdatedAt = priceOracle.getLastUpdatedAt();
-        res.json({
-          asset: 'XLM',
-          price_usd: price,
-          stale: priceOracle.isStale(),
-          provider: priceOracle.getLastProvider(),
-          lastUpdatedAt: lastUpdatedAt?.toISOString() ?? null,
-          source: priceOracle.getActiveSource(),
-          timestamp: new Date().toISOString(),
-        });
-      });
+      // Owned by src/routes/prices.ts alongside /api/prices, so the two
+      // contracts stay documented in one file (#394).
+      app.use('/api', legacyXlmPriceRouter);
     }
   }
 
