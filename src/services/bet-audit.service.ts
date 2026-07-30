@@ -47,7 +47,8 @@ import type { BetStatus } from "../data/bet-store";
 export type BetAuditEventName =
   | "BET_ACCEPTED"
   | "BET_FAILED"
-  | "BET_RECONCILED";
+  | "BET_RECONCILED"
+  | "CLAIM_ACCEPTED";
 
 export interface BetAuditEvent {
   event: BetAuditEventName;
@@ -57,7 +58,7 @@ export interface BetAuditEvent {
   address: string;
   amount: number;
   side?: "UP" | "DOWN";
-  mode: "UP_DOWN" | "PRECISION";
+  mode?: "UP_DOWN" | "PRECISION";
   result: string;
   /** Reconciliation status of the bet at the time the event was emitted. */
   status?: BetStatus;
@@ -76,6 +77,13 @@ export interface BetAuditParams {
   status?: BetStatus;
   txHash?: string;
   failureReason?: string;
+}
+
+export interface ClaimAuditParams {
+  address: string;
+  amount: number;
+  result: string;
+  txHash?: string;
 }
 
 class BetAuditService {
@@ -160,6 +168,36 @@ class BetAuditService {
   }
 
   /**
+   * Emit a CLAIM_ACCEPTED audit event for a successful claim/payout.
+   * Same storage modes as BET_ACCEPTED; never emitted for failed claims.
+   */
+  emitClaimAccepted(params: ClaimAuditParams): BetAuditEvent {
+    const event: BetAuditEvent = {
+      event: "CLAIM_ACCEPTED",
+      address: params.address,
+      amount: params.amount,
+      result: params.result,
+      txHash: params.txHash,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.events.push(event);
+
+    logger.info("Claim accepted", { audit: true, ...event });
+
+    if (this.storageMode === "database") {
+      void this.persistClaimToDatabase(event).catch((error) => {
+        logger.error("Failed to persist claim audit event to database", {
+          error: error instanceof Error ? error.message : "Unknown error",
+          eventType: event.event,
+        });
+      });
+    }
+
+    return event;
+  }
+
+  /**
    * Asynchronously enrich the event with the active round ID and persist
    * to the database when database mode is enabled.
    *
@@ -226,6 +264,26 @@ class BetAuditService {
           status: event.status,
           txHash: event.txHash,
           failureReason: event.failureReason,
+        } as any,
+        timestamp: new Date(event.createdAt),
+      },
+    });
+  }
+
+  private async persistClaimToDatabase(event: BetAuditEvent): Promise<void> {
+    await prisma.auditLog.create({
+      data: {
+        eventType: event.event,
+        severity: "info",
+        message: `Claim accepted: ${event.amount} XLM`,
+        outcome: "success",
+        actorType: "user",
+        walletAddress: event.address,
+        resourceType: "claim",
+        metadata: {
+          amount: event.amount,
+          result: event.result,
+          txHash: event.txHash,
         } as any,
         timestamp: new Date(event.createdAt),
       },
