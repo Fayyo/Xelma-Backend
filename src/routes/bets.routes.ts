@@ -10,6 +10,7 @@ import {
   isValidIdempotencyKey,
 } from "../utils/idempotency.util";
 import { ConflictError, ValidationError, ErrorCode, ExternalServiceError } from "../utils/errors";
+import { sendSuccess } from "../utils/response";
 
 const router = Router();
 
@@ -83,12 +84,12 @@ router.post(
       }
 
       const result = await betService.recordUpDownBet(req.body, idempotencyKey);
-      const responseBody = {
-        success: true,
+      const data = {
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
         state: result.state,
         ...(result.txHash ? { txHash: result.txHash } : {}),
       };
+      const responseBody = { success: true as const, data };
 
       if (idempotencyKey && lockAcquired) {
         await storeIdempotencyResult(
@@ -102,7 +103,7 @@ router.post(
         );
       }
 
-      res.json(responseBody);
+      return sendSuccess(res, data);
     } catch (error: any) {
       if (idempotencyKey && lockAcquired) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
@@ -186,12 +187,12 @@ router.post(
       }
 
       const result = await betService.recordPrecisionBet(req.body, idempotencyKey);
-      const responseBody = {
-        success: true,
+      const data = {
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
         state: result.state,
         ...(result.txHash ? { txHash: result.txHash } : {}),
       };
+      const responseBody = { success: true as const, data };
 
       if (idempotencyKey && lockAcquired) {
         await storeIdempotencyResult(
@@ -205,7 +206,7 @@ router.post(
         );
       }
 
-      res.json(responseBody);
+      return sendSuccess(res, data);
     } catch (error: any) {
       if (idempotencyKey && lockAcquired) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);

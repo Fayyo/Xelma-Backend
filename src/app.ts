@@ -49,21 +49,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use(metricsMiddleware);
 
   // Structured Winston HTTP request logging with duration and correlation ID
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const startMs = Date.now();
-    // Capture path before sub-router routing strips the prefix from req.url
-    const path = req.originalUrl.split('?')[0];
-    res.on('finish', () => {
-      logger.info('http request', {
-        requestId: (req as any).requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: Date.now() - startMs,
-      });
-    });
-    next();
-  });
+  app.use(httpLoggerMiddleware);
 
   app.get('/docs', (_req, res) => res.redirect(302, '/api-docs'));
   app.get('/api-docs.json', (_req, res) => res.json(hackathonSwaggerSpec));
