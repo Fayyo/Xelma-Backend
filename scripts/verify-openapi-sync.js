@@ -71,7 +71,6 @@ const ROUTE_FILE_PREFIXES = {
  */
 const EXEMPT_FROM_SPEC = new Set([
   'GET /',
-  'GET /api/price',
   'GET /docs',
   'GET /api-docs.json',
   'GET /api-docs',

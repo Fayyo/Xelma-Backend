@@ -8,6 +8,7 @@ import {
 } from "../schemas/tournament.schema";
 import tournamentService from "../services/tournament.service";
 import { NotFoundError } from "../utils/errors";
+import { sendSuccess } from "../utils/response";
 
 const router = Router();
 
@@ -49,7 +50,7 @@ const router = Router();
  *           application/json:
  *             schema:
  *               type: object
- *               required: [success, data, pagination]
+ *               required: [success, data]
  *               properties:
  *                 success:
  *                   type: boolean
@@ -57,13 +58,16 @@ const router = Router();
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Tournament'
- *                 pagination:
+ *                 meta:
  *                   type: object
- *                   required: [limit, offset, total]
  *                   properties:
- *                     limit: { type: integer }
- *                     offset: { type: integer }
- *                     total: { type: integer }
+ *                     pagination:
+ *                       type: object
+ *                       required: [limit, offset, total]
+ *                       properties:
+ *                         limit: { type: integer }
+ *                         offset: { type: integer }
+ *                         total: { type: integer }
  *       400:
  *         description: Invalid mode or status
  *         content:
@@ -78,10 +82,7 @@ router.get(
     try {
       const query = req.query as unknown as TournamentListQuery;
       const result = await tournamentService.listTournaments(query);
-      return res.json({
-        success: true,
-        ...result,
-      });
+      return sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
       return next(error);
     }
@@ -100,7 +101,7 @@ router.get("/:id", (req: Request, res: Response, next: NextFunction) => {
     return next(new NotFoundError("Tournament not found"));
   }
 
-  return res.json({ success: true, data: tournament });
+  return sendSuccess(res, tournament);
 });
 
 /**
@@ -118,12 +119,9 @@ router.post(
 
       const result = await tournamentService.joinTournament(userId, id);
 
-      res.json({
-        success: true,
-        data: {
-          tournamentId: id,
-          currentParticipants: result.currentParticipants,
-        },
+      return sendSuccess(res, {
+        tournamentId: id,
+        currentParticipants: result.currentParticipants,
       });
     } catch (error) {
       next(error);

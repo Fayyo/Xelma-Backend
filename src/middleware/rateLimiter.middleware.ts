@@ -64,7 +64,7 @@ function createRateLimiter(opts: {
   return rateLimit({
     windowMs: opts.windowMs,
     max: opts.max,
-    keyGenerator: opts.keyGenerator ?? ipKeyGenerator,
+    keyGenerator: opts.keyGenerator ?? (ipKeyGenerator as (req: any) => string),
     message: { error: 'Too Many Requests', message: opts.message, retryAfter: Math.ceil(opts.windowMs / 1000) },
     standardHeaders: true,
     legacyHeaders: false,
