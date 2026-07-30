@@ -16,6 +16,10 @@ import hackathonService from '../services/hackathon.service';
 import { mapSorobanRoundToFrontendCards } from '../utils/soroban-round.mapper';
 import logger from '../utils/logger';
 import { toDecimalString } from '../utils/decimal.util';
+import sorobanService from '../services/soroban.service';
+import { mapSorobanRoundToFrontendCards } from '../utils/soroban-round.mapper';
+import config from '../config';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -45,7 +49,7 @@ const router = Router();
  */
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!config.app.roundsMockMode) {
+if (!config.app.roundsMockMode) {
       try {
         const onChainRound = await sorobanService.getActiveRound();
         const cards = mapSorobanRoundToFrontendCards(onChainRound);

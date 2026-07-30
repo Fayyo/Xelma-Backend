@@ -2492,6 +2492,56 @@ Open [http://localhost:3001/api-docs](http://localhost:3001/api-docs) in a brows
 
 ---
 
+
+## ORM Decision (ADR-style) — Issue #391
+
+**Status:** Accepted, step 1 implemented.
+
+**Context**
+The hackathon read/write paths used two ORMs against the same Postgres database:
+Drizzle (`src/db/*`) for `hackathon.service.ts` (bet placement, user stats, round
+pools), and Prisma (`prisma/schema.prisma`) for everything else, including the
+`Mock*` models (`MockRound`, `MockLeaderboard`, `MockPlatformStat`) that already
+back the hackathon read endpoints (`/api/rounds`, `/api/leaderboard`, `/api/stats`)
+via the repository layer. Running two migration/seed toolchains against one
+database is exactly the "dual migrations, dual seeds, dual contributor setup"
+problem described in #391 — a contributor could migrate one ORM's schema and
+silently leave the other out of sync.
+
+**Decision**
+Standardize on **Prisma** as the single ORM for hackathon data going forward.
+Prisma is already the ORM for every non-hackathon table and already has the
+`Mock*` models the hackathon read paths use — Drizzle was the odd one out here,
+not the other way around.
+
+**Step 1 (this PR)**
+`hackathon.service.ts` — the one hackathon service still on Drizzle — has been
+migrated to Prisma:
+- `MockLeaderboard` gained `balance` and `pendingWinnings` fields so it can
+  represent the full hackathon user record (it previously only backed
+  leaderboard reads).
+- A new `MockBet` model replaces `hackathonBets`.
+- All `db.select()/.insert()/.update()` calls in `hackathon.service.ts` are now
+  `prisma.mockRound` / `prisma.mockLeaderboard` / `prisma.mockBet` calls.
+- The public API of `HackathonService` (method signatures and return shapes)
+  is unchanged, so `PrismaRoundRepository.placeBet` and `src/routes/user.ts`
+  needed no changes.
+
+**Remaining work (follow-up, not in this PR)**
+- `src/db/*` (Drizzle client, schema, migrate script, seed script) is now
+  unused by application code and can be deleted once `drizzle-orm` /
+  `drizzle-kit` are removed from `package.json`.
+- The Prisma migration for the new `MockBet` model and `MockLeaderboard`
+  columns still needs to be generated and applied against a real database
+  (`npx prisma migrate dev`) — not run here to avoid touching any live/shared
+  database from this change.
+
+**Why isolate-and-migrate over isolate-only**
+The alternative (marking Drizzle "demo-only" and leaving `hackathon.service.ts`
+on it) would have kept two live schemas against one database indefinitely.
+Since Prisma already owned the adjacent hackathon read models, migrating the
+one remaining Drizzle consumer was less total work than maintaining the split.
+
 ## Hackathon API Rate Limits
 
 The lightweight hackathon server (`src/app.ts`, default port **3001**) applies per-IP throttling with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) via `src/middleware/rateLimiter.ts`.
