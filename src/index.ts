@@ -1,9 +1,12 @@
-// Enforce Node.js 22+ runtime requirement at startup before loading any modules
 const nodeMajorVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajorVersion < 22) {
   logger.error("Application startup failed: Node.js v22.x or higher is required", {
     nodeVersion: process.version,
   });
+if (nodeMajorVersion < 22 && process.env.NODE_ENV !== 'test') {
+  console.error(`🔥 CRITICAL ERROR: Application startup failed.`);
+  console.error(`Node.js v22.x or higher is required. You are running v${process.version}.`);
+  console.error(`Please upgrade Node.js to avoid local vs Render mismatches.`);
   process.exit(1);
 }
 
@@ -32,6 +35,7 @@ import { errorHandler } from './middleware/errorHandler.middleware';
 import config from './config';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
+import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
 import metricsRoutes from './routes/metrics.routes';
 import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
@@ -44,7 +48,7 @@ import tournamentsRoutes from './routes/tournaments.routes';
 import pricesRoutes from './routes/prices';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/openapi';
-import { initializeSocket } from './socket';
+import { initializeSocket, closeWebSocket } from './socket';
 import { prisma } from './lib/prisma';
 import path from 'path';
 import { Router } from 'express';
@@ -120,11 +124,13 @@ assertPreflightOrExit();
 validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
+logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
 
 const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
  * Create and configure the Express app without starting any background
@@ -155,12 +161,9 @@ export function createApp(): Express {
    // Prometheus metrics middleware (before routes so all requests are tracked)
    app.use(metricsMiddleware);
 
-   // Request logging middleware
-   app.use((req: Request, res: Response, next: NextFunction) => {
-      const requestId = (req as any).requestId;
-      logger.info(`${req.method} ${req.path}`, { requestId });
-      next();
-   });
+   // Structured HTTP request logging — logged on finish with method, path,
+   // status, durationMs, and requestId. Shared between hackathon and full apps.
+   app.use(httpLoggerMiddleware);
 
     // API Routes
     app.use('/api/auth', authRoutes);
@@ -331,6 +334,7 @@ export async function startServer(app: Express): Promise<ServerHandle> {
       if (priceInterval) {
          clearInterval(priceInterval);
       }
+      closeWebSocket();
       if (!apiOnly) {
          priceOracle.stopPolling();
          roundSchedulerService.stop();
@@ -338,7 +342,10 @@ export async function startServer(app: Express): Promise<ServerHandle> {
       }
       // Always stop the general scheduler (outbox poller, cleanup jobs)
       schedulerService.stop();
-      httpServer.close();
+      httpServer.closeAllConnections();
+      await new Promise<void>((resolve) => {
+         httpServer.close(() => resolve());
+      });
       await prisma.$disconnect();
       logger.info('Shutdown complete');
    };
