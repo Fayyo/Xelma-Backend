@@ -117,10 +117,7 @@ router.post(
         try {
           await sorobanService.createRound(priceNum, 0);
         } catch (e) {
-          logger.warn(
-            "Soroban createRound failed, proceeding with DB-only round:",
-            e,
-          );
+          sorobanService.applyMoneyPathFailure("createRound", e);
         }
       }
 
@@ -299,10 +296,7 @@ router.post(
             predictionSide,
           );
         } catch (e) {
-          logger.warn(
-            "Soroban placeBet failed, proceeding with DB-only prediction:",
-            e,
-          );
+          sorobanService.applyMoneyPathFailure("placeBet", e);
         }
       }
 

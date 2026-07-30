@@ -48,6 +48,16 @@ const REQUIRED_OPERATIONS: RequiredOperation[] = [
   // Health / metrics
   { path: "/health", method: "get", statuses: ["200"] },
   { path: "/metrics/readiness", method: "get", statuses: ["200", "503"] },
+const REQUIRED_OPERATIONS: Array<{ path: string; method: string }> = [
+  { path: "/api/auth/challenge", method: "post" },
+  { path: "/api/auth/connect", method: "post" },
+  { path: "/api/predictions/submit", method: "post" },
+  { path: "/api/predictions/batch-submit", method: "post" },
+  { path: "/api/chat/send", method: "post" },
+  { path: "/api/admin/metrics/rate-limits", method: "get" },
+  { path: "/api/rounds/start", method: "post" },
+  { path: "/api/price", method: "get" },
+  { path: "/api/prices", method: "get" },
 ];
 
 describe("OpenAPI spec", () => {
@@ -66,6 +76,15 @@ describe("OpenAPI spec", () => {
         expect(operation?.responses?.[status]).toBeDefined();
       }
     }
+  it("documents distinct /api/price vs /api/prices contracts", () => {
+    const paths = (swaggerSpec as { paths?: Record<string, any> }).paths ?? {};
+    const priceOp = paths["/api/price"]?.get;
+    const pricesOp = paths["/api/prices"]?.get;
+
+    expect(priceOp?.summary).toMatch(/XLM oracle/i);
+    expect(pricesOp?.summary).toMatch(/multi-asset/i);
+    expect(String(priceOp?.description ?? "")).toMatch(/Do not confuse with.*\/api\/prices/i);
+    expect(String(pricesOp?.description ?? "")).toMatch(/Do not confuse with.*\/api\/price/i);
   });
 
   it("documents 429 response on batch prediction submit", () => {

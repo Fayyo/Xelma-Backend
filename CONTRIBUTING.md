@@ -22,13 +22,24 @@ hackathon entrypoint too.
 
 ```bash
 npm ci                 # install dependencies
-npm run prisma:generate # generate the Prisma client
+npm run db:prepare     # generate the Prisma client and apply all migrations
 npm run dev            # start the default (production) dev server
 
 npm run lint           # type-check (tsc --noEmit)
 npm test               # run the test suite
 npm run build          # compile to dist/
 ```
+
+## Database migrations
+
+The database is owned by **two** migration tools: **Prisma** (core schema, under
+`prisma/migrations/`) and **Drizzle** (the hackathon schema, under `drizzle/`).
+Do not run them separately — `npm run db:migrate` applies both in order, and
+`npm run db:prepare` runs `prisma generate` then `db:migrate`. This is the same
+command CI and the deploy workflow use. Change the core schema with
+`npm run prisma:migrate`; change the hackathon schema with
+`npx drizzle-kit generate` and commit the new file under `drizzle/`. See the
+README "Migration story" section for the full table.
 
 ## Keeping the repo root clean
 

@@ -16,6 +16,10 @@ import hackathonService from '../services/hackathon.service';
 import { mapSorobanRoundToFrontendCards } from '../utils/soroban-round.mapper';
 import logger from '../utils/logger';
 import { toDecimalString } from '../utils/decimal.util';
+import sorobanService from '../services/soroban.service';
+import { mapSorobanRoundToFrontendCards } from '../utils/soroban-round.mapper';
+import config from '../config';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -45,20 +49,13 @@ const router = Router();
  */
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!config.app.roundsMockMode) {
+if (!config.app.roundsMockMode) {
       try {
         const onChainRound = await sorobanService.getActiveRound();
         const cards = mapSorobanRoundToFrontendCards(onChainRound);
-        const payload = {
+        return sendSuccess(res, {
           source: onChainRound ? 'soroban' : 'mock',
           rounds: cards,
-        };
-        return res.json({
-          success: true,
-          data: payload,
-          source: payload.source,
-          rounds: payload.rounds,
-          payload,
         });
       } catch (err) {
         logger.warn('Soroban fetch failed; falling back to mock rounds', {
@@ -68,13 +65,7 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     }
 
     const { source, rounds } = await roundService.getRoundsForApi();
-    return res.json({
-      success: true,
-      data: { source, rounds },
-      source,
-      rounds,
-      payload: { source, rounds },
-    });
+    return sendSuccess(res, { source, rounds });
   } catch (err) {
     next(err);
   }
@@ -95,7 +86,7 @@ const hackathonBetAuth = [
 
 // TODO: Call contract via Xelma TypeScript bindings — bets must go on-chain; this endpoint is logging/analytics only for now
 router.post('/:id/bet', betRateLimiter, ...hackathonBetAuth, validate(betSchema), (_req, res) => {
-  res.json({ success: true, message: 'Bet recorded (stub)' });
+  sendSuccess(res, { message: 'Bet recorded (stub)' });
 });
 
 // Hackathon mutation endpoints - with Zod validation for consistent error handling
