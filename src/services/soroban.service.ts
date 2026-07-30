@@ -3,10 +3,15 @@ import type { Client as XelmaClient, BetSide, OraclePayload, RoundMode, UserStat
 import config from "../config";
 import logger from "../utils/logger";
 import { toDecimal } from "../utils/decimal.util";
+import { stroopsToXlm } from "../utils/payout.util";
 import { withTimeout, TimeoutResult } from "../utils/timeout-wrapper";
 import { CircuitBreaker, CircuitBreakerOpenError } from "../utils/circuit-breaker";
 import { Decimal } from "@prisma/client/runtime/library";
 import { mapSorobanError } from "../utils/errors";
+import {
+  sorobanRpcCallsTotal,
+  sorobanRpcDurationSeconds,
+} from "../metrics/application.metrics";
 
 export interface SorobanHealth {
   initialized: boolean;
@@ -624,6 +629,60 @@ export class SorobanService {
       });
       return BigInt(0);
     }
+
+    return result.data!;
+  }
+
+  /**
+   * Claims pending winnings on the Soroban contract and credits the user's balance.
+   * Returns the claimed amount in XLM (converted from stroops) plus optional tx hash.
+   *
+   * Uses timeout wrapper with retry logic. Signed by the admin keypair (backend relay).
+   */
+  async claimWinnings(
+    userAddress: string,
+  ): Promise<{ state: string; amount: number; txHash?: string }> {
+    await this.ensureInitialized();
+
+    const result = await this.callWithBreaker("sorobanClaimWinnings", () =>
+      withTimeout(
+        async () => {
+          logger.debug(`Initiating Soroban claimWinnings: user=${userAddress}`);
+
+          const tx = await this.client!.claim_winnings({ user: userAddress });
+          const res = await tx.signAndSend({
+            signTransaction: this.signWithAdmin.bind(this),
+          });
+
+          const claimedStroops = (res as any)?.result ?? tx.result ?? BigInt(0);
+          return {
+            state: "on-chain-success",
+            amount: stroopsToXlm(claimedStroops),
+            txHash: (res as any).hash,
+          };
+        },
+        {
+          timeoutMs: this.CALL_TIMEOUT_MS,
+          operationName: "sorobanClaimWinnings",
+          retries: this.MAX_RETRIES,
+        },
+      ),
+    );
+
+    if (!result.success) {
+      logger.error("Failed to claim winnings on Soroban after retries", {
+        error: result.error?.message,
+        timedOut: result.timedOut,
+        durationMs: result.durationMs,
+      });
+      throw mapSorobanError(result.error?.message);
+    }
+
+    logger.info("Winnings claimed successfully on Soroban", {
+      amount: result.data?.amount,
+      durationMs: result.durationMs,
+      retriesUsed: result.retriesUsed,
+    });
 
     return result.data!;
   }
