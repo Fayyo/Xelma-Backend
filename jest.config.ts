@@ -21,6 +21,7 @@ const integrationTestFiles = [
   "notifications.routes.spec.ts",
   "performance.spec.ts",
   "prediction-concurrency.spec.ts",
+  "tournament-concurrency.spec.ts",
   "predictions.routes.spec.ts",
   "rate-limit-visibility.spec.ts",
   "requestId.middleware.spec.ts",

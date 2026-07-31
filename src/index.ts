@@ -1,8 +1,9 @@
 const nodeMajorVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajorVersion < 22 && process.env.NODE_ENV !== 'test') {
-  console.error(`🔥 CRITICAL ERROR: Application startup failed.`);
-  console.error(`Node.js v22.x or higher is required. You are running v${process.version}.`);
-  console.error(`Please upgrade Node.js to avoid local vs Render mismatches.`);
+  logger.error('Application startup failed: Node.js v22.x or higher is required', {
+    nodeVersion: process.version,
+    hint: 'Upgrade Node.js to avoid local vs Render mismatches.',
+  });
   process.exit(1);
 }
 
@@ -31,11 +32,10 @@ export { getHttpCorsOrigins } from './utils/cors';
 
 const validateEnv = (): void => {
    if (!process.env.JWT_SECRET) {
-      console.error('🔥 CRITICAL ERROR: Application startup failed.');
-      console.error('Missing required environment variable: JWT_SECRET');
-      console.error(
-         'Please configure this securely in your environment before starting the app.'
-      );
+      logger.error('Application startup failed: Missing required environment variable: JWT_SECRET', {
+         variable: 'JWT_SECRET',
+      });
+      logger.error('Please configure this securely in your environment before starting the app.');
       process.exit(1); // 1 indicates a failure/error state
    }
 };

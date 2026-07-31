@@ -66,6 +66,7 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api/admin/dead-letter", only: "main", reason: "Admin surface is production-only.", flag: "adminRoutes" },
   { method: "POST", path: "/api/admin/dead-letter/retry-all", only: "main", reason: "Admin surface is production-only.", flag: "adminRoutes" },
   { method: "POST", path: "/api/admin/dead-letter/:id/retry", only: "main", reason: "Admin surface is production-only.", flag: "adminRoutes" },
+  { method: "GET", path: "/api/admin/bet-audit", only: "main", reason: "Admin surface is production-only.", flag: "adminRoutes" },
 
   // --- legacyPriceEndpoint ---
   { method: "GET", path: "/api/price", only: "main", reason: "Production single-asset XLM price endpoint; both apps also serve /api/prices.", flag: "legacyPriceEndpoint" },
@@ -73,16 +74,10 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   // --- platformStats ---
   { method: "GET", path: "/api/stats", only: "hackathon", reason: "Landing-page platform stats are hackathon-only.", flag: "platformStats" },
 
-  // --- rounds router (mode-specific) ---
-  { method: "GET", path: "/api/rounds/active", only: "main", reason: "Production rounds router: active-round lookup.", flag: "mode: rounds router" },
-  { method: "GET", path: "/api/rounds/:id", only: "main", reason: "Production rounds router: round detail lookup.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/start", only: "main", reason: "Production rounds router: admin round creation.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/:id/resolve", only: "main", reason: "Production rounds router: oracle round resolution.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/:id/simulate", only: "main", reason: "Production rounds router: round simulation.", flag: "mode: rounds router" },
-  { method: "GET", path: "/api/rounds", only: "hackathon", reason: "Hackathon rounds router: mock rounds collection.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/:id/bet", only: "hackathon", reason: "Hackathon rounds router: mock bet stub.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/hackathon/up-down/:id/bet", only: "hackathon", reason: "Hackathon rounds router: mock up-down bet stub.", flag: "mode: rounds router" },
-  { method: "POST", path: "/api/rounds/hackathon/precision/:id/bet", only: "hackathon", reason: "Hackathon rounds router: mock precision bet stub.", flag: "mode: rounds router" },
+  // --- rounds router ---
+  // Nothing to allowlist: #389 consolidated the two round routers into one
+  // `routes/rounds.routes.ts` that both modes mount, so every round endpoint
+  // is present in both apps and there is no accepted difference left here.
 
   // --- leaderboard router (mode-specific) ---
   { method: "POST", path: "/api/leaderboard/batch", only: "main", reason: "Production leaderboard router: authenticated batch lookup.", flag: "mode: leaderboard router" },

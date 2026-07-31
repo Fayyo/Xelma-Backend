@@ -38,6 +38,7 @@ import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
 import corsDiagnosticsRoutes from './routes/admin-cors-diagnostics.routes';
 import deadLetterRoutes from './routes/admin-dead-letter.routes';
+import betAuditRoutes from './routes/admin-bet-audit.routes';
 import healthRoutes from './routes/health';
 import statsRoutes from './routes/stats';
 import indexRoutes from './routes/index';
@@ -47,12 +48,13 @@ import pricesRoutes, { legacyXlmPriceRouter } from './routes/prices';
 // surfaces: the full app exposes the production routers, the hackathon app
 // exposes the mock/demo ones. Both are mounted through this factory so the
 // choice is explicit rather than implied by which file you happen to read.
-import fullRoundsRoutes from './routes/rounds.routes';
-import hackathonRoundsRoutes from './routes/rounds';
+// Rounds are no longer mode-specific: #389 consolidated `routes/rounds.ts` and
+// `routes/round.routes.ts` into this single router, which both modes mount.
+import roundsRoutes from './routes/rounds.routes';
 import fullLeaderboardRoutes from './routes/leaderboard.routes';
 import hackathonLeaderboardRoutes from './routes/leaderboard';
 
-import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
+import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
@@ -84,7 +86,7 @@ export interface AppFeatures {
   education: boolean;
   /** Machine-readable error catalog. `/api/errors` */
   errorCatalog: boolean;
-  /** Admin surfaces: metrics, CORS diagnostics, dead-letter queue. */
+  /** Admin surfaces: metrics, CORS diagnostics, dead-letter queue, bet audit. */
   adminRoutes: boolean;
   /** Mirror every `/api/*` route under `/api/v1/*`. */
   versionedAlias: boolean;
@@ -233,7 +235,7 @@ function mountApiRoutes(
   }
 
   target.use('/user', userRoutes);
-  target.use('/rounds', mode === 'full' ? fullRoundsRoutes : hackathonRoundsRoutes);
+  target.use('/rounds', roundsRoutes);
   target.use('/bets', betsRoutes);
 
   if (features.predictions) {
@@ -263,6 +265,7 @@ function mountApiRoutes(
     target.use('/admin/metrics', adminMetricsRoutes);
     target.use('/admin/cors-diagnostics', corsDiagnosticsRoutes);
     target.use('/admin/dead-letter', deadLetterRoutes);
+    target.use('/admin/bet-audit', betAuditRoutes);
   }
 
   if (features.errorCatalog) {
