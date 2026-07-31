@@ -1577,7 +1577,8 @@ Minimal env vars needed (all others use sensible defaults):
 | `DATA_MODE` | `mock` | Use mock in-process data (no DB) |
 | `ENABLE_MULTIPLAYER_SOCIAL` | `true` | Enable chat / notifications |
 | `CLIENT_URL` | `https://your-app.onrender.com` | CORS origin |
-| `CONTRACT_ID` | *(sync on Render)* | Soroban contract address (optional for demo) |
+| `SOROBAN_CONTRACT_ID` | *(sync on Render)* | Soroban contract address (optional for demo; alias: `CONTRACT_ID`) |
+| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC (alias: `STELLAR_RPC_URL`) |
 
 ### Profile 2: Production Full Backend (`xelma-backend`)
 
@@ -1653,8 +1654,8 @@ The server starts on `http://localhost:3001` (or the `PORT` in `.env`). See the 
 | `DATA_MODE` | `mock` | Hackathon service data mode (set to `mock` to query Drizzle schema tables) |
 | `ENABLE_MULTIPLAYER_SOCIAL` | `true` | Feature flag to enable/disable chat and notifications routes |
 | `COINGECKO_API_URL` | `https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd` | Price oracle source |
-| `STELLAR_RPC_URL` | `https://soroban-testnet.stellar.org` | Stellar/Soroban RPC |
-| `CONTRACT_ID` | *(your deployed contract)* | Soroban prediction market contract |
+| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC (alias: `STELLAR_RPC_URL`) |
+| `SOROBAN_CONTRACT_ID` | *(your deployed contract)* | Soroban prediction market contract (alias: `CONTRACT_ID`) |
 
 > **Note**: For the Hackathon MVP, the backend is fully migrated from in-memory arrays to PostgreSQL via Drizzle ORM for durable persistence of users, rounds, and bets. No in-memory stores are used.
 
