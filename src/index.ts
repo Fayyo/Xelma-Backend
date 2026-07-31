@@ -1,4 +1,8 @@
 const nodeMajorVersion = parseInt(process.versions.node.split('.')[0], 10);
+if (nodeMajorVersion < 22) {
+  logger.error("Application startup failed: Node.js v22.x or higher is required", {
+    nodeVersion: process.version,
+  });
 if (nodeMajorVersion < 22 && process.env.NODE_ENV !== 'test') {
   console.error(`🔥 CRITICAL ERROR: Application startup failed.`);
   console.error(`Node.js v22.x or higher is required. You are running v${process.version}.`);
@@ -32,11 +36,13 @@ import config from './config';
 import { metricsMiddleware } from './middleware/metrics.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.middleware';
 import metricsRoutes from './routes/metrics.routes';
 import adminMetricsRoutes from './routes/admin-metrics.routes';
 import errorsRoutes from './routes/errors.routes';
 import corsDiagnosticsRoutes from './routes/admin-cors-diagnostics.routes';
 import deadLetterRoutes from './routes/admin-dead-letter.routes';
+import betAuditRoutes from './routes/admin-bet-audit.routes';
 import healthRoutes from './routes/health';
 import chatRoutes from './routes/chat.routes';
 import tournamentsRoutes from './routes/tournaments.routes';
@@ -55,36 +61,14 @@ dotenv.config({ override: false });
 export { getHttpCorsOrigins } from './utils/cors';
 import { getHttpCorsOrigins } from './utils/cors';
 
-/**
- * Apply security headers to every response.
- * Prevents common browser-based attacks without adding helmet as a dependency.
- */
-function securityHeaders(
-   _req: Request,
-   res: Response,
-   next: NextFunction
-): void {
-   res.setHeader('X-Content-Type-Options', 'nosniff');
-   res.setHeader('X-Frame-Options', 'DENY');
-   res.setHeader('X-XSS-Protection', '1; mode=block');
-   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-   res.setHeader('Content-Security-Policy', "default-src 'self'");
-   res.setHeader(
-      'Permissions-Policy',
-      'geolocation=(), camera=(), microphone=()'
-   );
-   next();
-}
-
 const validateEnv = (): void => {
-   if (!process.env.JWT_SECRET) {
-      console.error('🔥 CRITICAL ERROR: Application startup failed.');
-      console.error('Missing required environment variable: JWT_SECRET');
-      console.error(
-         'Please configure this securely in your environment before starting the app.'
-      );
-      process.exit(1); // 1 indicates a failure/error state
-   }
+    if (!process.env.JWT_SECRET) {
+       logger.error("Application startup failed: Missing required environment variable: JWT_SECRET", {
+         variable: "JWT_SECRET",
+       });
+       logger.error("Please configure this securely in your environment before starting the app.");
+       process.exit(1); // 1 indicates a failure/error state
+    }
 };
 
 /**
@@ -126,6 +110,10 @@ const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info(
+  `Soroban money-path policy: ${config.soroban.failClosed ? "FAIL-CLOSED (abort on chain failure)" : "FAIL-OPEN (DB-only fallback allowed)"}`,
+  { SOROBAN_FAIL_CLOSED: config.soroban.failClosed },
+);
 logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
@@ -135,8 +123,8 @@ logger.info('Runtime modes documented at docs/runtime-modes.md');
 export function createApp(): Express {
    const app = express();
 
-   // Security headers (before all routes)
-   app.use(securityHeaders);
+   // Security headers (before all routes) — shared between main & hackathon apps
+   app.use(securityHeadersMiddleware);
 
    // CORS — origin allowlist is driven by CLIENT_URL / ALLOWED_ORIGINS env vars
    app.use(
@@ -176,7 +164,8 @@ export function createApp(): Express {
     app.use('/api/errors', errorsRoutes);
     app.use('/api/admin/cors-diagnostics', corsDiagnosticsRoutes);
      app.use('/api/admin/dead-letter', deadLetterRoutes);
-     app.use('/health', healthRoutes);
+     app.use('/api/admin/bet-audit', betAuditRoutes);
+      app.use('/health', healthRoutes);
 
      // Versioned API v1 router (same routes, under /api/v1 prefix)
     const v1Router = Router();
@@ -193,8 +182,9 @@ export function createApp(): Express {
     v1Router.use('/admin/metrics', adminMetricsRoutes);
     v1Router.use('/errors', errorsRoutes);
     v1Router.use('/admin/cors-diagnostics', corsDiagnosticsRoutes);
-    v1Router.use('/admin/dead-letter', deadLetterRoutes);
-    app.use('/api/v1', v1Router);
+     v1Router.use('/admin/dead-letter', deadLetterRoutes);
+     v1Router.use('/admin/bet-audit', betAuditRoutes);
+     app.use('/api/v1', v1Router);
 
     // Deprecation headers for legacy unversioned /api/* paths
     app.use('/api', (req, res, next) => {
@@ -231,23 +221,9 @@ export function createApp(): Express {
       });
     });
 
-    // Multi-asset prices via CoinGecko (BTC, ETH, XLM)
+    // Price endpoints: GET /api/prices (multi-asset) and GET /api/price (XLM oracle).
+    // These are intentionally different contracts — see OpenAPI / README.
    app.use('/api', pricesRoutes);
-
-    // Price Oracle endpoint (returns price_usd as a precise decimal string)
-   app.get('/api/price', (req: Request, res: Response) => {
-      const price = priceOracle.getPriceString();
-      const lastUpdatedAt = priceOracle.getLastUpdatedAt();
-      res.json({
-         asset: 'XLM',
-         price_usd: price,
-         stale: priceOracle.isStale(),
-         provider: priceOracle.getLastProvider(),
-         lastUpdatedAt: lastUpdatedAt?.toISOString() ?? null,
-         source: priceOracle.getActiveSource(),
-         timestamp: new Date().toISOString(),
-      });
-   });
 
    // 404 handler - forward to error handler for consistent response format
    app.use((req: Request, res: Response, next: NextFunction) => {

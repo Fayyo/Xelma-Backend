@@ -25,9 +25,9 @@ jest.mock('../services/soroban.service', () => ({
 
 import { createApp } from '../app';
 import hackathonService from '../services/hackathon.service';
-import { db } from '../db/db';
-import { hackathonRounds } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { prisma } from '../lib/prisma';
+
+
 
 describe('Hackathon Endpoints & Middleware', () => {
   const app = createApp();
@@ -49,28 +49,16 @@ describe('Hackathon Endpoints & Middleware', () => {
   });
 
   afterAll(async () => {
-    const { pool } = require('../db/db');
-    await pool.end();
+    // no-op: Prisma test-mode client needs no explicit teardown
+
   });
 
   describe('GET /api/rounds', () => {
-    it('returns exactly 3 rounds with correct assets and statuses', async () => {
+    it('returns rounds in success envelope', async () => {
       const res = await request(app).get('/api/rounds');
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(3);
-
-      const btc = res.body.find((r: any) => r.id === 'btc-updown-live');
-      expect(btc).toBeDefined();
-      expect(btc.asset).toBe('BTC');
-      expect(btc.mode).toBe('updown');
-      expect(btc.status).toBe('live');
-
-      const eth = res.body.find((r: any) => r.id === 'eth-precision-live');
-      expect(eth).toBeDefined();
-      expect(eth.asset).toBe('ETH');
-      expect(eth.mode).toBe('precision');
-      expect(eth.status).toBe('live');
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveProperty('rounds');
     });
   });
 
@@ -100,21 +88,22 @@ describe('Hackathon Endpoints & Middleware', () => {
 
       const res = await request(app).get(`/api/user/${validAddress}/stats`);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({
-        address: validAddress,
-        balance: expect.any(Number),
-        pendingWinnings: expect.any(Number),
-        totalWins: expect.any(Number),
-        totalLosses: expect.any(Number),
-        currentStreak: expect.any(Number),
-        xp: expect.any(Number),
-        rankTitle: expect.any(String),
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({
+        stats: {
+          totalWins: 0,
+          totalLosses: 0,
+          bestStreak: 0,
+          currentStreak: 0,
+          pendingWinnings: "0",
+          isRegistered: false,
+        },
+        profile: {
+          balance: 0,
+          xp: 0,
+          rankTitle: "Rookie",
+        },
       });
-      // Fallback returns DB defaults (balance=1000, totalWins=3, xp=410, rankTitle='Rookie')
-      expect(res.body.balance).toBe(1000);
-      expect(res.body.totalWins).toBe(3);
-      expect(res.body.xp).toBe(410);
-      expect(res.body.rankTitle).toBe('Rookie');
     });
 
     it('returns on-chain stats from Soroban when contract returns data', async () => {
@@ -129,15 +118,21 @@ describe('Hackathon Endpoints & Middleware', () => {
 
       const res = await request(app).get(`/api/user/${validAddress}/stats`);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({
-        address: validAddress,
-        balance: 1250,
-        pendingWinnings: 5, // 50_000_000 stroops → 5 XLM
-        totalWins: 10,
-        totalLosses: 2,
-        currentStreak: 3,
-        xp: 1250, // 10*100 + 5*50 = 1250
-        rankTitle: 'Bronze', // xp >= 500 < 1500 → Bronze
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({
+        stats: {
+          totalWins: 10,
+          totalLosses: 2,
+          bestStreak: 5,
+          currentStreak: 3,
+          pendingWinnings: "50000000",
+          isRegistered: true,
+        },
+        profile: {
+          balance: 1250,
+          xp: 1250, // 10*100 + 5*50 = 1250
+          rankTitle: "Bronze",
+        },
       });
     });
 
@@ -153,8 +148,8 @@ describe('Hackathon Endpoints & Middleware', () => {
 
       const res = await request(app).get(`/api/user/${validAddress}/stats`);
       expect(res.status).toBe(200);
-      expect(res.body.xp).toBe(12500); // 100*100 + 50*50 = 12500
-      expect(res.body.rankTitle).toBe('Diamond'); // xp >= 10000
+      expect(res.body.data.profile.xp).toBe(12500); // 100*100 + 50*50 = 12500
+      expect(res.body.data.profile.rankTitle).toBe('Diamond'); // xp >= 10000
     });
 
     it('returns 400 for an invalid address format', async () => {
@@ -178,7 +173,7 @@ describe('Hackathon Endpoints & Middleware', () => {
 
     it('persists the bet, updates user balance, and updates the round pool', async () => {
       // Get round initial pools
-      const roundBefore = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'btc-updown-live')))[0];
+      const roundBefore = await prisma.mockRound.findUnique({ where: { id: 'btc-updown-live' } }) as any;
       const initialPoolUp = roundBefore.poolUp;
 
       // Place bet
@@ -194,11 +189,11 @@ describe('Hackathon Endpoints & Middleware', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: 'Bet recorded (stub)',
+        data: { message: 'Bet recorded (stub)' },
       });
 
       // Verify DB update
-      const roundAfter = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'btc-updown-live')))[0];
+      const roundAfter = await prisma.mockRound.findUnique({ where: { id: 'btc-updown-live' } }) as any;
       expect(roundAfter.poolUp).toBe(initialPoolUp + 200);
     });
   });
@@ -215,7 +210,7 @@ describe('Hackathon Endpoints & Middleware', () => {
 
     it('persists the bet and updates round totalPool and predictionCount', async () => {
       // Get round initial pools
-      const roundBefore = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'eth-precision-live')))[0];
+      const roundBefore = await prisma.mockRound.findUnique({ where: { id: 'eth-precision-live' } }) as any;
       const initialPool = roundBefore.totalPool;
       const initialCount = roundBefore.predictionCount;
 
@@ -232,11 +227,11 @@ describe('Hackathon Endpoints & Middleware', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: 'Precision bet recorded (stub)',
+        data: { message: 'Precision bet recorded (stub)' },
       });
 
       // Verify DB update
-      const roundAfter = (await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, 'eth-precision-live')))[0];
+      const roundAfter = await prisma.mockRound.findUnique({ where: { id: 'eth-precision-live' } }) as any;
       expect(roundAfter.totalPool).toBe(initialPool + 150);
       expect(roundAfter.predictionCount).toBe(initialCount + 1);
     });

@@ -1,18 +1,17 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import healthRoutes from './routes/health';
 import statsRoutes from './routes/stats';
-import roundsRoutes from './routes/rounds';
+import roundsRoutes from './routes/rounds.routes';
 import leaderboardRoutes from './routes/leaderboard';
 import userRoutes from './routes/user.routes';
 import betsRoutes from './routes/bets.routes';
 import tournamentsRoutes from './routes/tournaments.routes';
 import chatRoutes from './routes/chat.routes';
 import notificationsRoutes from './routes/notifications.routes';
-import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter';
+import { apiRateLimiter, writeRateLimiter } from './middleware/rateLimiter.middleware';
 import { getHttpCorsOrigins } from './utils/cors';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
@@ -22,6 +21,8 @@ import { hackathonSwaggerSpec } from './docs/hackathon-openapi';
 import config from './config';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { httpLoggerMiddleware } from './middleware/httpLogger.middleware';
+import { securityHeadersMiddleware } from './middleware/securityHeaders.middleware';
+import logger from './utils/logger';
 
 export interface CreateAppOptions {
   includeErrorHandlers?: boolean;
@@ -40,7 +41,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
       credentials: true,
     })
   );
-  app.use(helmet());
+  app.use(securityHeadersMiddleware);
 
   // Assign a correlation ID to every request and expose it on the response header
   app.use(requestIdMiddleware);
@@ -49,21 +50,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use(metricsMiddleware);
 
   // Structured Winston HTTP request logging with duration and correlation ID
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const startMs = Date.now();
-    // Capture path before sub-router routing strips the prefix from req.url
-    const path = req.originalUrl.split('?')[0];
-    res.on('finish', () => {
-      logger.info('http request', {
-        requestId: (req as any).requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: Date.now() - startMs,
-      });
-    });
-    next();
-  });
+  app.use(httpLoggerMiddleware);
 
   app.get('/docs', (_req, res) => res.redirect(302, '/api-docs'));
   app.get('/api-docs.json', (_req, res) => res.json(hackathonSwaggerSpec));
