@@ -1,3 +1,4 @@
+import logger from "../../utils/logger";
 import { CoingeckoPriceProvider } from './coingecko.provider';
 import { StaticPriceProvider } from './static.provider';
 import { PriceFetchResult, PriceProvider, PriceProviderName } from './types';
@@ -41,21 +42,21 @@ export async function fetchPricesWithFailover(
 
   for (const provider of providers) {
     try {
-      const result = await provider.fetchPrices();
-      if (provider.name !== providers[0]?.name) {
-        console.warn(
-          `[price-oracle] failover engaged: primary=${providers[0]?.name} active=${provider.name}`,
-        );
-      }
-      return result;
-    } catch (error) {
-      lastError = error;
-      console.warn(
-        `[price-oracle] provider failed: ${provider.name} — ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+       const result = await provider.fetchPrices();
+       if (provider.name !== providers[0]?.name) {
+         logger.warn("[price-oracle] failover engaged", {
+           primary: providers[0]?.name,
+           active: provider.name,
+         });
+       }
+       return result;
+     } catch (error) {
+       lastError = error;
+       logger.warn("[price-oracle] provider failed", {
+         provider: provider.name,
+         error: error instanceof Error ? error.message : String(error),
+       });
+     }
   }
 
   throw lastError instanceof Error

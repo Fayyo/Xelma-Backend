@@ -308,6 +308,17 @@ export function mapSorobanError(errorMsg: string | undefined): AppError {
     );
   }
 
+  if (
+    msg.includes("no pending") ||
+    msg.includes("nothing to claim") ||
+    msg.includes("already claimed")
+  ) {
+    return new BusinessRuleError(
+      "No claimable winnings available.",
+      ErrorCode.CONTRACT_INVALID_STATE
+    );
+  }
+
   if (msg.includes("invalid state")) {
     return new BusinessRuleError(
       "Contract operation rejected due to invalid state.",
