@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { createValidator, ConfigValidationError } from "./validation";
+import { resolveSorobanEnvVars } from "./env";
 import logger from "../utils/logger";
 
 dotenv.config();
@@ -183,23 +184,26 @@ function buildConfig(): Config {
     }
   }
 
+  // Prefer SOROBAN_* canonically; accept CONTRACT_ID / STELLAR_RPC_URL aliases (#404).
+  const sorobanEnv = resolveSorobanEnvVars(env);
+
   const sorobanNetwork = v.oneOf(
-    env.SOROBAN_NETWORK,
+    sorobanEnv.network,
     "SOROBAN_NETWORK",
     ["testnet", "mainnet"] as const,
     "testnet",
   );
 
   const soroban: SorobanConfig = {
-    contractId: v.optional(env.SOROBAN_CONTRACT_ID, ""),
+    contractId: v.optional(sorobanEnv.contractId.value, ""),
     network: sorobanNetwork,
     rpcUrl: v.url(
-      env.SOROBAN_RPC_URL,
-      "SOROBAN_RPC_URL",
+      sorobanEnv.rpcUrl.value,
+      sorobanEnv.rpcUrl.source ?? "SOROBAN_RPC_URL",
       "https://soroban-testnet.stellar.org",
     ),
-    adminSecret: v.optional(env.SOROBAN_ADMIN_SECRET, ""),
-    oracleSecret: v.optional(env.SOROBAN_ORACLE_SECRET, ""),
+    adminSecret: v.optional(sorobanEnv.adminSecret, ""),
+    oracleSecret: v.optional(sorobanEnv.oracleSecret, ""),
     // Default fail-open for local/demo; production should set true.
     failClosed: v.boolean(env.SOROBAN_FAIL_CLOSED, false),
   };

@@ -20,6 +20,12 @@ import logger from './utils/logger';
 import { validateVendoredBindings } from './utils/bindings-validator';
 import config from './config';
 import { createApp as createAppFromFactory, AppFeatures } from './app-factory';
+// Route and middleware imports moved to src/app-factory.ts; only the Soroban
+// env resolver is still used here, by the startup log below.
+import {
+  formatResolvedSorobanConfigForLog,
+  resolveSorobanEnvVars,
+} from './config/env';
 import { initializeSocket, closeWebSocket } from './socket';
 import { prisma } from './lib/prisma';
 import path from 'path';
@@ -74,6 +80,13 @@ validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
+logger.info(
+  'Soroban configuration resolved',
+  formatResolvedSorobanConfigForLog(resolveSorobanEnvVars(), {
+    rpcUrl: config.soroban.rpcUrl,
+    network: config.soroban.network,
+  }),
+);
 
 const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {

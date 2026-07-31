@@ -50,6 +50,8 @@ describe("Bets Routes", () => {
         data: {
           message: "Bet recorded (stub)",
           state: "stub",
+          betId: expect.any(String),
+          status: "STUB",
         },
       });
     });
@@ -71,6 +73,8 @@ describe("Bets Routes", () => {
           message: "Bet placed on-chain",
           state: "on-chain-success",
           txHash: "0x123",
+          betId: expect.any(String),
+          status: "CONFIRMED",
         },
       });
     });
@@ -265,6 +269,8 @@ describe("Bets Routes", () => {
         data: {
           message: "Bet recorded (stub)",
           state: "stub",
+          betId: expect.any(String),
+          status: "STUB",
         },
       });
     });
@@ -286,6 +292,8 @@ describe("Bets Routes", () => {
           message: "Bet placed on-chain",
           state: "on-chain-success",
           txHash: "0x456",
+          betId: expect.any(String),
+          status: "CONFIRMED",
         },
       });
     });
