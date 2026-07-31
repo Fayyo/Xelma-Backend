@@ -1,8 +1,10 @@
 import sorobanService from './soroban.service';
+import priceOracle from './oracle';
 import logger from '../utils/logger';
 import educationTipService from './education-tip.service';
+import websocketService from './websocket.service';
 import { prisma } from '../lib/prisma';
-import { invalidateNamespace } from '../lib/redis';
+import { invalidateNamespace, invalidateLeaderboardSortedSet } from '../lib/redis';
 import { OutboxEventType } from '@prisma/client';
 import {
    toDecimal,
@@ -14,7 +16,7 @@ import {
    decFixed,
 } from '../utils/decimal.util';
 import { Decimal } from '@prisma/client/runtime/library';
-import { ValidationError } from '../utils/errors';
+import { ExternalServiceError, ValidationError } from '../utils/errors';
 import {
    RoundLifecycleOutcome,
    RoundPriceRange,
@@ -24,7 +26,11 @@ import {
    parseRoundPriceRanges,
    validateUserPriceRange,
 } from '../utils/price-range.util';
-import { roundsResolvedTotal } from '../metrics/application.metrics';
+import { calculatePayout } from '../utils/payout.util';
+import {
+   roundsResolvedTotal,
+   oracleResolveBlockedTotal,
+} from '../metrics/application.metrics';
 
 function isValidRange(range: any): range is RoundPriceRange {
    return (
@@ -37,6 +43,42 @@ function isValidRange(range: any): range is RoundPriceRange {
 
 export class ResolutionService {
    /**
+    * Central settlement safety guard (#229).
+    *
+    * Refuses to settle a round while this process's price feed is known to
+    * be stale, protecting BOTH the automated resolve loop and the manual
+    * oracle/admin POST /rounds/:id/resolve path from settling against a
+    * frozen or broken upstream.
+    *
+    * The guard is intentionally scoped to processes that actually poll the
+    * oracle (`isRunning()`): an API-only HTTP process — or the test
+    * environment — does not track price freshness and therefore cannot and
+    * must not assess staleness here. In those processes the background
+    * worker that owns polling is the one enforcing the guard.
+    */
+   private assertOraclePriceFresh(roundId: string): void {
+      if (!priceOracle.isRunning()) {
+         return;
+      }
+      if (priceOracle.isStale()) {
+         oracleResolveBlockedTotal.inc({ reason: 'stale_price' });
+         logger.error(
+            '[ResolutionService] Refusing to resolve — oracle price is stale',
+            {
+               roundId,
+               lastUpdatedAt:
+                  priceOracle.getLastUpdatedAt()?.toISOString() ?? null,
+               stalenessSeconds: priceOracle.getStalenessSeconds(),
+               thresholdMs: priceOracle.getStalenessThresholdMs(),
+            }
+         );
+         throw new ExternalServiceError(
+            'Cannot resolve round: oracle price data is stale'
+         );
+      }
+   }
+
+   /**
     * Resolves a round with the final price
     * Uses transactional semantics to prevent race conditions and duplicate payouts
     */
@@ -45,6 +87,9 @@ export class ResolutionService {
       finalPrice: number | string | Decimal
    ): Promise<any> {
       try {
+         // Settlement safety: never resolve against a stale price feed.
+         this.assertOraclePriceFresh(roundId);
+
          // Get round outside transaction for initial checks
          const round = await prisma.round.findUnique({
             where: { id: roundId },
@@ -146,6 +191,7 @@ export class ResolutionService {
 
          if (result?.outcome === RoundLifecycleOutcome.UPDATED && result.round) {
             roundsResolvedTotal.inc({ mode: result.round.mode });
+            websocketService.emitRoundResolved(result.round);
          }
 
          // Generate educational tip outside transaction (non-critical)
@@ -191,13 +237,18 @@ export class ResolutionService {
       const db = tx || prisma;
 
       // Call Soroban contract to resolve
-      // Note: This is called BEFORE DB updates. If it fails, transaction rolls back.
-      // If it succeeds but DB update fails, we have a compensating transaction via retry.
-      await sorobanService.resolveRound(
-         finalPrice,
-         0,
-         BigInt(Math.floor(Date.now() / 1000))
-      );
+      // Note: This is called BEFORE DB updates. If it fails under fail-closed,
+      // the error propagates and the transaction rolls back. Under fail-open,
+      // settlement continues with database-only updates.
+      try {
+         await sorobanService.resolveRound(
+            finalPrice,
+            0,
+            BigInt(Math.floor(Date.now() / 1000))
+         );
+      } catch (e) {
+         sorobanService.applyMoneyPathFailure('resolveRound', e);
+      }
 
       const startPriceDec = toDecimal(round.startPrice);
       const priceWentUp = finalPrice.gt(startPriceDec);
@@ -251,8 +302,7 @@ export class ResolutionService {
          if (prediction.side === winningSide) {
             // Winner: gets bet back + proportional share of losing pool (decimal-safe)
             const predAmount = toDecimal(prediction.amount);
-            const share = decMul(decDiv(predAmount, winningPool), losingPool);
-            const payout = decAdd(predAmount, share);
+            const payout = calculatePayout(predAmount, winningPool, losingPool);
 
             await db.prediction.update({
                where: { id: prediction.id },
@@ -531,11 +581,7 @@ export class ResolutionService {
          ) {
             // Winner (decimal-safe)
             const predAmount = toDecimal(prediction.amount);
-            const share = decMul(
-               decDiv(predAmount, decWinningPool),
-               decLosingPool
-            );
-            const payout = decAdd(predAmount, share);
+            const payout = calculatePayout(predAmount, decWinningPool, decLosingPool);
 
             await db.prediction.update({
                where: { id: prediction.id },

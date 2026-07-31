@@ -1,4 +1,3 @@
-import path from 'path';
 import swaggerJSDoc from 'swagger-jsdoc';
 
 const PORT = process.env.PORT || 3000;
@@ -169,6 +168,40 @@ export const swaggerSpec = swaggerJSDoc({
           required: ['min', 'max'],
           additionalProperties: false,
         },
+
+        MultiAssetPriceResponse: {
+          type: 'object',
+          description:
+            'Multi-asset spot prices from GET /api/prices. Not interchangeable with XlmOraclePriceResponse from GET /api/price.',
+          properties: {
+            BTC: { type: 'number', example: 67420.12 },
+            ETH: { type: 'number', example: 3241.55 },
+            XLM: { type: 'number', example: 0.2891 },
+            stale: { type: 'boolean', example: false },
+            lastUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+          required: ['BTC', 'ETH', 'XLM', 'stale', 'lastUpdatedAt'],
+        },
+        XlmOraclePriceResponse: {
+          type: 'object',
+          description:
+            'Single-asset XLM oracle snapshot from GET /api/price. Not interchangeable with MultiAssetPriceResponse from GET /api/prices.',
+          properties: {
+            asset: { type: 'string', enum: ['XLM'], example: 'XLM' },
+            price_usd: {
+              type: 'string',
+              nullable: true,
+              description: 'XLM/USD as a precise decimal string (null if oracle has no sample yet)',
+              example: '0.28910000',
+            },
+            stale: { type: 'boolean', example: false },
+            provider: { type: 'string', nullable: true, example: 'coingecko' },
+            lastUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
+            source: { type: 'string', nullable: true, example: 'live' },
+            timestamp: { type: 'string', format: 'date-time' },
+          },
+          required: ['asset', 'price_usd', 'stale', 'timestamp'],
+        },
       },
     },
     tags: [
@@ -181,11 +214,17 @@ export const swaggerSpec = swaggerJSDoc({
       { name: 'chat', description: 'Global chat messaging' },
       { name: 'notifications', description: 'User notifications management' },
       { name: 'Admin', description: 'Administrative and operational endpoints' },
+      {
+        name: 'prices',
+        description:
+          'Price feeds. GET /api/price is the XLM oracle; GET /api/prices is the multi-asset ticker — different payloads, not aliases.',
+      },
     ],
   },
   apis: [
-    path.join(process.cwd(), 'src/routes/*.ts'),
-    path.join(process.cwd(), 'src/index.ts'),
+    // Use forward-slash globs so swagger-jsdoc expands on Windows and POSIX.
+    'src/routes/*.ts',
+    'src/index.ts',
   ],
 });
 

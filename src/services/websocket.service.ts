@@ -1,8 +1,13 @@
-import { Server as SocketIOServer } from 'socket.io';
 import { DispatchChannel } from '@prisma/client';
 import logger from '../utils/logger';
 import deadLetterQueueService from './dead-letter-queue.service';
 import { websocketEmitsTotal } from '../metrics/application.metrics';
+import { prisma } from '../lib/prisma';
+import type {
+  ServerToClientEvents,
+  TypedServer,
+} from '../types/socket-events';
+import type { ChatMessage } from '../types/chat.types';
 
 /**
  * Centralized event names so DLQ replay can map a stored `eventName` back
@@ -11,30 +16,61 @@ import { websocketEmitsTotal } from '../metrics/application.metrics';
 export const WebSocketEvents = {
   RoundStarted: 'round:started',
   PredictionPlaced: 'prediction:placed',
+  BetAccepted: 'bet:accepted',
   RoundResolved: 'round:resolved',
   PriceUpdate: 'price:update',
   ChatMessage: 'chat:message',
   NotificationNew: 'notification:new',
   NotificationUnreadCount: 'notification:unread-count',
+  RoundUpdate: 'round_update',
+  PriceUpdateV2: 'price_update',
 } as const;
 
 export type WebSocketEventName =
   (typeof WebSocketEvents)[keyof typeof WebSocketEvents];
 
-interface SafeEmitInput {
+type EventPayloadMap = {
+  [K in keyof ServerToClientEvents]: Parameters<ServerToClientEvents[K]>[0];
+};
+
+interface SafeEmitInput<E extends WebSocketEventName> {
   room: string;
-  event: WebSocketEventName;
+  event: E;
   payload: any;
   userId?: string | null;
 }
 
-class WebSocketService {
-  private io: SocketIOServer | null = null;
+/** Payload for live bet acceptance broadcasts (Issue #376). */
+export interface BetAcceptedPayload {
+  roundId?: string;
+  address: string;
+  amount: number;
+  side?: 'UP' | 'DOWN';
+  mode: 'UP_DOWN' | 'PRECISION';
+  state: string;
+  txHash?: string;
+}
+
+export class WebSocketService {
+  private static _singleton = new WebSocketService();
+  private io: TypedServer | null = null;
+
+  static get instance(): WebSocketService {
+    return WebSocketService._singleton;
+  }
+
+  static emitRoundUpdate(round: any): void {
+    WebSocketService.instance.emitRoundUpdate(round);
+  }
+
+  static emitPriceUpdate(payload: { asset: string; price: number | string }): void {
+    WebSocketService.instance.emitPriceUpdate(payload.asset, payload.price);
+  }
 
   /**
    * Initialize the WebSocket service with Socket.IO instance
    */
-  initialize(io: SocketIOServer): void {
+  initialize(io: TypedServer): void {
     this.io = io;
     logger.info("WebSocket service initialized");
   }
@@ -42,7 +78,7 @@ class WebSocketService {
   /**
    * Get the Socket.IO instance
    */
-  getIO(): SocketIOServer | null {
+  getIO(): TypedServer | null {
     return this.io;
   }
 
@@ -52,11 +88,10 @@ class WebSocketService {
    * replayed (Issue #193). Never throws — emits are fire-and-forget on the
    * caller's hot path.
    */
-  private safeEmit(input: SafeEmitInput): void {
+  private safeEmit<E extends WebSocketEventName>(input: SafeEmitInput<E>): void {
     if (!this.io) {
       logger.warn(`WebSocket not initialized, cannot emit ${input.event}`);
       websocketEmitsTotal.inc({ event: input.event, outcome: 'unavailable' });
-      // fire-and-forget — DLQ helper swallows its own errors
       void deadLetterQueueService.record({
         channel: DispatchChannel.WEBSOCKET_EMIT,
         eventName: input.event,
@@ -68,7 +103,7 @@ class WebSocketService {
     }
 
     try {
-      this.io.to(input.room).emit(input.event, input.payload);
+      (this.io.to(input.room).emit as any)(input.event, input.payload);
       websocketEmitsTotal.inc({ event: input.event, outcome: 'success' });
     } catch (err) {
       logger.error(`Failed to emit ${input.event}`, { error: err });
@@ -103,7 +138,7 @@ class WebSocketService {
     if (!room) {
       throw new Error('Missing room for websocket replay');
     }
-    this.io.to(room).emit(eventName, data);
+    (this.io.to(room).emit as (event: string, data: unknown) => void)(eventName, data);
   }
 
   /**
@@ -121,6 +156,9 @@ class WebSocketService {
     };
     this.safeEmit({ room: 'round', event: WebSocketEvents.RoundStarted, payload });
     logger.info(`Emitted round:started for round ${round.id}`);
+
+    // Also emit the real-time round_update event
+    this.emitRoundUpdate(round);
   }
 
   /**
@@ -139,6 +177,30 @@ class WebSocketService {
   }
 
   /**
+   * Emit when a bet is accepted (stub or on-chain). Broadcasts to the
+   * general `round` room and, when known, to `round:{roundId}`.
+   * Used by both the full server (`initializeSocket` → this service) and
+   * the hackathon entrypoint (`initWebSocket` → same service).
+   */
+  emitBetAccepted(payload: BetAcceptedPayload): void {
+    this.safeEmit({
+      room: 'round',
+      event: WebSocketEvents.BetAccepted,
+      payload,
+    });
+    if (payload.roundId) {
+      this.safeEmit({
+        room: `round:${payload.roundId}`,
+        event: WebSocketEvents.BetAccepted,
+        payload,
+      });
+    }
+    logger.info(
+      `Emitted bet:accepted for address=${payload.address} mode=${payload.mode} state=${payload.state}`,
+    );
+  }
+
+  /**
    * Emit event when a round is resolved
    */
   emitRoundResolved(round: any): void {
@@ -153,18 +215,65 @@ class WebSocketService {
     };
     this.safeEmit({ room: 'round', event: WebSocketEvents.RoundResolved, payload });
     logger.info(`Emitted round:resolved for round ${round.id}`);
+
+    // Also emit the real-time round_update event
+    this.emitRoundUpdate(round);
   }
 
   /**
-   * Emit price update event
+   * Emit real-time round status and pool updates to general and round-specific rooms
    */
-  emitPriceUpdate(asset: string, price: number | string): void {
+  emitRoundUpdate(round: any): void {
+    const payload = {
+      id: round.id,
+      mode: round.mode,
+      status: round.status,
+      startTime: round.startTime?.toISOString?.() || round.startTime,
+      endTime: round.endTime?.toISOString?.() || round.endTime,
+      startPrice: round.startPrice ? Number(round.startPrice) : null,
+      endPrice: round.endPrice ? Number(round.endPrice) : null,
+      poolUp: round.poolUp ? Number(round.poolUp) : 0,
+      poolDown: round.poolDown ? Number(round.poolDown) : 0,
+      priceRanges: round.priceRanges,
+      resolvedAt: round.resolvedAt?.toISOString?.() || round.resolvedAt,
+    };
+
+    // Broadcast to general 'round' room
+    this.safeEmit({ room: 'round', event: WebSocketEvents.RoundUpdate, payload });
+
+    // Broadcast to specific round room
+    this.safeEmit({ room: `round:${round.id}`, event: WebSocketEvents.RoundUpdate, payload });
+    logger.info(`Emitted round_update for round ${round.id}`);
+  }
+
+  /**
+   * Emit price update event to general room and each active round's room
+   */
+  async emitPriceUpdate(asset: string, price: number | string): Promise<void> {
     const payload = {
       asset,
       price,
       timestamp: new Date().toISOString(),
     };
+    
+    // Broadcast legacy event to general room
     this.safeEmit({ room: 'round', event: WebSocketEvents.PriceUpdate, payload });
+
+    // Broadcast new real-time price update to general room
+    this.safeEmit({ room: 'round', event: WebSocketEvents.PriceUpdateV2, payload });
+
+    // Broadcast price update to room per active round
+    try {
+      const activeRounds = await prisma.round.findMany({
+        where: { status: 'ACTIVE' },
+        select: { id: true },
+      });
+      for (const r of activeRounds) {
+        this.safeEmit({ room: `round:${r.id}`, event: WebSocketEvents.PriceUpdateV2, payload });
+      }
+    } catch (err) {
+      logger.error('Failed to broadcast price_update to active round rooms:', err);
+    }
   }
 
   /**
@@ -215,4 +324,4 @@ class WebSocketService {
   }
 }
 
-export default new WebSocketService();
+export default WebSocketService.instance;

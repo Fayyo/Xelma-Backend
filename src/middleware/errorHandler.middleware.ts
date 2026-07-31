@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { Prisma } from '@prisma/client';
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientValidationError,
+} from '@prisma/client/runtime/library';
 import { AppError, ValidationError, ErrorCode } from '../utils/errors';
 import logger from '../utils/logger';
 
@@ -11,6 +14,7 @@ export interface ErrorResponse {
   error: string;
   message: string;
   code: string;
+  path: string; // <-- Added to satisfy the explicit issue requirement
   requestId?: string;
   details?: { field: string; message: string }[];
   timestamp?: string;
@@ -19,7 +23,7 @@ export interface ErrorResponse {
 /**
  * Maps a Prisma known-request error to an AppError.
  */
-function fromPrismaError(err: Prisma.PrismaClientKnownRequestError): AppError {
+function fromPrismaError(err: PrismaClientKnownRequestError): AppError {
   switch (err.code) {
     case 'P2025':
       // Record not found
@@ -44,7 +48,7 @@ function fromPrismaError(err: Prisma.PrismaClientKnownRequestError): AppError {
 /**
  * Central Express error-handling middleware.
  *
- * Register this LAST in src/index.ts so it catches errors forwarded
+ * Register this LAST in src/index.ts or src/app.ts so it catches errors forwarded
  * via `next(error)` from any route or middleware.
  */
 export function errorHandler(
@@ -58,7 +62,7 @@ export function errorHandler(
 
   if (err instanceof AppError) {
     appError = err;
-  } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
+  } else if (err instanceof PrismaClientKnownRequestError) {
     appError = fromPrismaError(err);
   } else if (
     err instanceof SyntaxError &&
@@ -67,7 +71,7 @@ export function errorHandler(
     (err as any).type === 'entity.parse.failed'
   ) {
     appError = new ValidationError('Malformed JSON body');
-  } else if (err instanceof Prisma.PrismaClientValidationError) {
+  } else if (err instanceof PrismaClientValidationError) {
     appError = new ValidationError('Invalid database query parameters');
   } else if (err instanceof Error) {
     appError = new AppError(err.message || 'Internal Server Error', 500, ErrorCode.INTERNAL_SERVER_ERROR);
@@ -85,14 +89,16 @@ export function errorHandler(
     message: appError.message,
     requestId,
     timestamp,
+    path: req.originalUrl,
     ...(appError.details && { details: appError.details }),
     ...(isDev && err instanceof Error && { stack: err.stack }),
   });
 
   const body: ErrorResponse & { stack?: string } = {
-    error: appError.name,
+    error: appError.message || appError.name, // Ensure textual summary error field is clear
     message: appError.message,
     code: appError.code,
+    path: req.originalUrl, // <-- Explicitly mapped parameter requirement
     requestId,
     timestamp,
     ...(appError.details && { details: appError.details }),
@@ -107,7 +113,7 @@ export function errorHandler(
  * automatically forwarded to the error handler via `next(error)`.
  *
  * Usage:
- *   router.get('/path', asyncHandler(async (req, res) => { ... }));
+ * router.get('/path', asyncHandler(async (req, res) => { ... }));
  */
 export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
