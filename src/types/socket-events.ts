@@ -45,6 +45,17 @@ export interface PredictionPlacedPayload {
   priceRange: unknown;
 }
 
+/** Payload for live bet acceptance broadcasts (Issue #376). */
+export interface BetAcceptedPayload {
+  roundId?: string;
+  address: string;
+  amount: number;
+  side?: 'UP' | 'DOWN';
+  mode: 'UP_DOWN' | 'PRECISION';
+  state: string;
+  txHash?: string;
+}
+
 export interface RoundResolvedPayload {
   id: string;
   status: string;
@@ -135,6 +146,7 @@ export interface ServerToClientEvents {
 
   'round:started': (data: RoundStartedPayload) => void;
   'prediction:placed': (data: PredictionPlacedPayload) => void;
+  'bet:accepted': (data: BetAcceptedPayload) => void;
   'round:resolved': (data: RoundResolvedPayload) => void;
   'price:update': (data: PriceUpdatePayload) => void;
   'price_update': (data: PriceUpdatePayload) => void;

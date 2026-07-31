@@ -35,10 +35,43 @@ jest.mock('../services/hackathon.service', () => ({
   },
 }));
 
-jest.mock('../middleware/rateLimiter', () => {
+jest.mock('../middleware/rateLimiter.middleware', () => {
   const pass = (_req: any, _res: any, next: any) => next();
-  return { apiRateLimiter: pass, writeRateLimiter: pass, betRateLimiter: pass };
+  return { apiRateLimiter: pass, writeRateLimiter: pass, betRateLimiter: pass, adminRoundRateLimiter: pass, oracleResolveRateLimiter: pass, challengeRateLimiter: pass, connectRateLimiter: pass, authRateLimiter: pass, chatMessageRateLimiter: pass, predictionRateLimiter: pass, batchPredictionRateLimiter: pass, batchLeaderboardRateLimiter: pass };
 });
+
+const SOROBAN_ROUND_RESPONSE = {
+  source: 'soroban',
+  rounds: [
+    {
+      id: 'soroban-1',
+      sorobanRoundId: '1',
+      mode: 'UP_DOWN',
+      status: 'ACTIVE',
+      startPrice: 0.2891,
+      poolUp: 2.8,
+      poolDown: 1.4,
+      startLedger: 100,
+      betEndLedger: 200,
+      endLedger: 300,
+      isSoroban: true,
+      source: 'soroban',
+    },
+  ],
+};
+
+const DATABASE_ROUND_RESPONSE = {
+  source: 'database',
+  rounds: [
+    {
+      id: 'db-round-1',
+      mode: 'UP_DOWN',
+      status: 'ACTIVE',
+      startPrice: 0.5,
+      source: 'database',
+    },
+  ],
+};
 
 const MOCK_ROUND_RESPONSE = {
   source: 'mock',
@@ -52,6 +85,7 @@ const MOCK_ROUND_RESPONSE = {
       poolUp: 100,
       poolDown: 200,
       closesAt: new Date(Date.now() + 3600000).toISOString(),
+      source: 'mock',
     },
   ],
 };
@@ -69,23 +103,90 @@ describe('GET /api/rounds — delegating to shared round service', () => {
     jest.clearAllMocks();
   });
 
-  it('returns mock rounds when service returns mock source', async () => {
+  it('returns the on-chain round when the service resolves the soroban source', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(SOROBAN_ROUND_RESPONSE);
+
+    const res = await request(app).get('/api/rounds');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.source).toBe('soroban');
+    expect(Array.isArray(res.body.data.rounds)).toBe(true);
+    expect(res.body.data.rounds).toHaveLength(1);
+    expect(res.body.data.rounds[0].sorobanRoundId).toBe('1');
+    expect(res.body.data.rounds[0].mode).toBe('UP_DOWN');
+    expect(res.body.data.rounds[0].status).toBe('ACTIVE');
+    expect(res.body.data.rounds[0].isSoroban).toBe(true);
+    expect(res.body.data.rounds[0].source).toBe('soroban');
+  });
+
+  it('never substitutes fabricated mock rounds into a soroban-sourced response', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(SOROBAN_ROUND_RESPONSE);
+
+    const res = await request(app).get('/api/rounds');
+
+    expect(res.body.data.source).toBe('soroban');
+    expect(
+      res.body.data.rounds.every((round: any) => round.source === 'soroban')
+    ).toBe(true);
+  });
+
+  it('returns database rounds when the service falls back to the database source', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(DATABASE_ROUND_RESPONSE);
+
+    const res = await request(app).get('/api/rounds');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.source).toBe('database');
+    expect(res.body.data.rounds).toHaveLength(1);
+    expect(res.body.data.rounds[0].id).toBe('db-round-1');
+    expect(res.body.data.rounds[0].source).toBe('database');
+  });
+
+  it('returns mock rounds when the service falls back to the mock source', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(MOCK_ROUND_RESPONSE);
+
     const res = await request(app).get('/api/rounds');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.source).toBe('mock');
     expect(Array.isArray(res.body.data.rounds)).toBe(true);
+    expect(res.body.data.rounds[0].source).toBe('mock');
   });
 
-  it('response always uses envelope with success and data', async () => {
+  it('delegates sourcing to the shared service exactly once per request', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(SOROBAN_ROUND_RESPONSE);
+
+    await request(app).get('/api/rounds');
+
+    expect(mockGetRoundsForApi).toHaveBeenCalledTimes(1);
+  });
+
+  it('response always uses envelope with success, data, source, and rounds', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(MOCK_ROUND_RESPONSE);
+
     const res = await request(app).get('/api/rounds');
 
     expect(res.body).toHaveProperty('success', true);
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('source');
     expect(res.body.data).toHaveProperty('rounds');
-    expect(res.body).not.toHaveProperty('rounds');
+    expect(res.body.success).toBe(true);
+    expect(['soroban', 'database', 'mock']).toContain(res.body.data.source);
+  });
+
+  it('mirrors source and rounds at the top level of the envelope', async () => {
+    mockGetRoundsForApi.mockResolvedValueOnce(MOCK_ROUND_RESPONSE);
+
+    const res = await request(app).get('/api/rounds');
+
+    expect(res.body).toHaveProperty('source');
+    expect(res.body).toHaveProperty('rounds');
+    expect(res.body.source).toBe(res.body.data.source);
+    expect(res.body.rounds).toEqual(res.body.data.rounds);
+    expect(['soroban', 'database', 'mock']).toContain(res.body.source);
   });
 
   it('propagates service errors to the error handler', async () => {

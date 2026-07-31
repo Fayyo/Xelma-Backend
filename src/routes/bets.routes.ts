@@ -1,19 +1,27 @@
-import { Router, Response, NextFunction } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate.middleware";
 import {
   verifyStellarAuth,
   bindAuthenticatedWallet,
+  requireAdmin,
   AuthenticatedRequest,
 } from "../middleware/auth.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
+import { BetStatus } from "../data/bet-store";
 import {
   acquireIdempotencyLock,
   releaseIdempotencyLock,
   storeIdempotencyResult,
   isValidIdempotencyKey,
 } from "../utils/idempotency.util";
-import { ConflictError, ValidationError, ErrorCode, ExternalServiceError } from "../utils/errors";
+import {
+  ConflictError,
+  ValidationError,
+  ErrorCode,
+  ExternalServiceError,
+  NotFoundError,
+} from "../utils/errors";
 import { sendSuccess } from "../utils/response";
 
 const router = Router();
@@ -91,6 +99,8 @@ router.post(
       const data = {
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
         state: result.state,
+        betId: result.betId,
+        status: result.status,
         ...(result.txHash ? { txHash: result.txHash } : {}),
       };
       const responseBody = { success: true as const, data };
@@ -114,11 +124,11 @@ router.post(
       }
 
       if (error?.message?.includes("Circuit breaker")) {
-        return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
+        throw new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR);
       }
-      next(error);
+      throw error;
     }
-  }) as any,
+  }),
 );
 
 /**
@@ -194,6 +204,8 @@ router.post(
       const data = {
         message: result.state === "stub" ? "Bet recorded (stub)" : "Bet placed on-chain",
         state: result.state,
+        betId: result.betId,
+        status: result.status,
         ...(result.txHash ? { txHash: result.txHash } : {}),
       };
       const responseBody = { success: true as const, data };
@@ -344,6 +356,116 @@ router.post(
           )
         );
       }
+      throw error;
+    }
+  }),
+);
+
+const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
+
+/**
+ * @swagger
+ * /api/bets/reconciliation:
+ *   get:
+ *     summary: Query bet records and their on-chain reconciliation state
+ *     description: >
+ *       Admin-only. Returns bet records with their reconciliation fields
+ *       (status, txHash, submittedAt) plus a per-status summary, so stub bets
+ *       and their eventual on-chain transactions can be audited together.
+ *     tags: [bets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: address
+ *         schema: { type: string }
+ *         description: Filter by Stellar wallet address
+ *       - in: query
+ *         name: roundId
+ *         schema: { type: string }
+ *         description: Filter by round
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [STUB, SUBMITTED, CONFIRMED, FAILED] }
+ *         description: Filter by reconciliation status
+ *     responses:
+ *       200:
+ *         description: Matching bet records, newest first, with a status summary
+ *       400:
+ *         description: Unknown status filter
+ *       401:
+ *         description: Missing or invalid JWT
+ *       403:
+ *         description: Admin access required
+ */
+router.get(
+  "/reconciliation",
+  requireAdmin,
+  ((req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { address, roundId, status } = req.query;
+
+      if (status !== undefined && !BET_STATUSES.includes(status as BetStatus)) {
+        throw new ValidationError(
+          `Invalid status filter. Expected one of: ${BET_STATUSES.join(", ")}.`
+        );
+      }
+
+      const bets = betService.getBets({
+        address: address as string | undefined,
+        roundId: roundId as string | undefined,
+        status: status as BetStatus | undefined,
+      });
+
+      res.json({
+        success: true,
+        summary: betService.getReconciliationSummary(),
+        count: bets.length,
+        bets,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }) as any,
+);
+
+/**
+ * @swagger
+ * /api/bets/{id}:
+ *   get:
+ *     summary: Get a single bet record with its reconciliation state
+ *     tags: [bets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Bet ID returned when the bet was placed
+ *     responses:
+ *       200:
+ *         description: Bet record
+ *       401:
+ *         description: Missing or invalid JWT
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Bet not found
+ */
+router.get(
+  "/:id",
+  requireAdmin,
+  ((req: Request, res: Response, next: NextFunction) => {
+    try {
+      const bet = betService.getBet(req.params.id);
+
+      if (!bet) {
+        throw new NotFoundError(`Bet ${req.params.id} not found`);
+      }
+
+      res.json({ success: true, bet });
+    } catch (error) {
       next(error);
     }
   }) as any,
