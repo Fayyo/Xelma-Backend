@@ -70,8 +70,8 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api", only: "hackathon", reason: "Hackathon app mounts the health router under /api instead of /health." },
   // GET /api/prices is shared by both apps (multi-asset ticker) — not allowlisted.
   { method: "GET", path: "/api/stats", only: "hackathon", reason: "Landing-page platform stats are hackathon-only." },
-  { method: "GET", path: "/api/rounds", only: "hackathon", reason: "Hackathon mock rounds collection; production exposes /api/rounds/active and /api/rounds/:id." },
-  { method: "POST", path: "/api/rounds/:id/bet", only: "hackathon", reason: "Hackathon mock bet stub." },
+  { method: "GET", path: "/api/rounds", only: "both", reason: "Consolidated round router — both apps serve the same set of round endpoints." },
+  { method: "POST", path: "/api/rounds/:id/bet", only: "both", reason: "Stub bet endpoint available in both apps." },
   { method: "POST", path: "/api/rounds/hackathon/up-down/:id/bet", only: "hackathon", reason: "Hackathon mock up-down bet stub." },
   { method: "POST", path: "/api/rounds/hackathon/precision/:id/bet", only: "hackathon", reason: "Hackathon mock precision bet stub." },
 ];

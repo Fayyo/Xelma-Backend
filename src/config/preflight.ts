@@ -20,6 +20,8 @@
  *  5. REDIS_URL (warning only)
  */
 
+import { execSync } from 'child_process';
+import logger from '../utils/logger';
 export type RuntimeMode = 'hackathon' | 'full';
 
 export interface PreflightResult {
@@ -245,7 +247,7 @@ export function assertPreflightOrExit(
 
   if (result.warnings.length > 0) {
     for (const w of result.warnings) {
-      console.warn(`[preflight] WARNING: ${w}`);
+       logger.warn("[preflight] WARNING", { warning: w });
     }
   }
 
@@ -273,7 +275,7 @@ export function assertPreflightOrExit(
       throw new PreflightError(result.errors, lines.join('\n'));
     }
 
-    console.error(lines.join('\n'));
+       logger.error("Preflight failed", { errors: lines.join('\n') });
     process.exit(1);
   }
 }

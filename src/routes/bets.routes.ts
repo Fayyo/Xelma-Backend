@@ -124,11 +124,11 @@ router.post(
       }
 
       if (error?.message?.includes("Circuit breaker")) {
-        return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
+        throw new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR);
       }
-      next(error);
+      throw error;
     }
-  }) as any,
+  }),
 );
 
 /**
@@ -356,9 +356,9 @@ router.post(
           )
         );
       }
-      next(error);
+      throw error;
     }
-  }) as any,
+  }),
 );
 
 const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
