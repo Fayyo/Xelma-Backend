@@ -1,10 +1,43 @@
+/**
+ * Lifecycle of a bet record, from local stub through on-chain settlement.
+ *
+ *   STUB      recorded locally only (BET_STUB_MODE=true); no chain call made
+ *   SUBMITTED handed to Soroban, outcome not yet known
+ *   CONFIRMED accepted on-chain; `txHash` is populated
+ *   FAILED    chain submission rejected; `failureReason` is populated
+ *
+ * A STUB bet can later be reconciled to CONFIRMED once the corresponding
+ * on-chain transaction is identified, which is what makes the stub → live
+ * migration auditable.
+ */
+export type BetStatus = 'STUB' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+
 export interface StoredBet {
+  id: string;
   address: string;
   amount: number;
   side?: 'UP' | 'DOWN';
   predictedPrice?: number;
-  roundId: string;
+  mode: 'updown' | 'precision';
+  /** Undefined when no round was active at the time the bet was recorded. */
+  roundId?: string;
   timestamp: string;
+
+  // --- on-chain reconciliation ---
+  status: BetStatus;
+  /** Set once the bet is CONFIRMED (or reconciled from STUB). */
+  txHash?: string;
+  /** Set when the bet is handed to Soroban. */
+  submittedAt?: string;
+  confirmedAt?: string;
+  failedAt?: string;
+  failureReason?: string;
+}
+
+export interface BetQuery {
+  address?: string;
+  roundId?: string;
+  status?: BetStatus;
 }
 
 export interface StoredRound {
@@ -64,34 +97,160 @@ const SEED_ROUNDS: StoredRound[] = [
 
 class BetStore {
   private rounds: Map<string, StoredRound>;
-  private bets: StoredBet[] = [];
+  private bets: Map<string, StoredBet> = new Map();
   private totalBetsCount = 0;
+  private betSequence = 0;
 
   constructor() {
     this.rounds = new Map(SEED_ROUNDS.map(r => [r.id, { ...r }]));
   }
 
-  addUpDownBet(roundId: string, address: string, amount: number, side: 'UP' | 'DOWN'): void {
-    const round = this.rounds.get(roundId);
-    if (!round || round.mode !== 'updown') return;
-
-    if (side === 'UP') round.poolUp += amount;
-    else round.poolDown += amount;
-    round.totalPool = round.poolUp + round.poolDown;
-
-    this.bets.push({ roundId, address, amount, side, timestamp: new Date().toISOString() });
-    this.totalBetsCount++;
+  private nextBetId(): string {
+    this.betSequence++;
+    return `bet-${this.betSequence}`;
   }
 
-  addPrecisionBet(roundId: string, address: string, amount: number, predictedPrice: number): void {
-    const round = this.rounds.get(roundId);
-    if (!round || round.mode !== 'precision') return;
-
-    round.totalPool += amount;
-    round.predictionCount++;
-
-    this.bets.push({ roundId, address, amount, predictedPrice, timestamp: new Date().toISOString() });
+  /**
+   * Record a bet and return the stored record so the caller can reconcile it
+   * against an on-chain transaction later.
+   *
+   * The record is always created, even when no matching round is available.
+   * Pool accounting only runs when the round exists and matches the mode —
+   * an unreconcilable bet record is still better than a lost one.
+   */
+  private recordBet(bet: Omit<StoredBet, 'id' | 'timestamp'>): StoredBet {
+    const stored: StoredBet = {
+      ...bet,
+      id: this.nextBetId(),
+      timestamp: new Date().toISOString(),
+    };
+    this.bets.set(stored.id, stored);
     this.totalBetsCount++;
+    return stored;
+  }
+
+  addUpDownBet(
+    roundId: string,
+    address: string,
+    amount: number,
+    side: 'UP' | 'DOWN',
+    status: BetStatus = 'STUB',
+  ): StoredBet {
+    const round = this.rounds.get(roundId);
+
+    if (round && round.mode === 'updown') {
+      if (side === 'UP') round.poolUp += amount;
+      else round.poolDown += amount;
+      round.totalPool = round.poolUp + round.poolDown;
+    }
+
+    return this.recordBet({
+      roundId: round && round.mode === 'updown' ? roundId : undefined,
+      address,
+      amount,
+      side,
+      mode: 'updown',
+      status,
+      submittedAt: status === 'SUBMITTED' ? new Date().toISOString() : undefined,
+    });
+  }
+
+  addPrecisionBet(
+    roundId: string,
+    address: string,
+    amount: number,
+    predictedPrice: number,
+    status: BetStatus = 'STUB',
+  ): StoredBet {
+    const round = this.rounds.get(roundId);
+
+    if (round && round.mode === 'precision') {
+      round.totalPool += amount;
+      round.predictionCount++;
+    }
+
+    return this.recordBet({
+      roundId: round && round.mode === 'precision' ? roundId : undefined,
+      address,
+      amount,
+      predictedPrice,
+      mode: 'precision',
+      status,
+      submittedAt: status === 'SUBMITTED' ? new Date().toISOString() : undefined,
+    });
+  }
+
+  /** Mark a bet as handed to Soroban, before the outcome is known. */
+  markSubmitted(betId: string): StoredBet | undefined {
+    const bet = this.bets.get(betId);
+    if (!bet) return undefined;
+
+    bet.status = 'SUBMITTED';
+    bet.submittedAt = bet.submittedAt ?? new Date().toISOString();
+    return bet;
+  }
+
+  /**
+   * Attach the on-chain transaction hash and mark the bet CONFIRMED.
+   *
+   * This is the stub → live upgrade path: a bet recorded as STUB while
+   * BET_STUB_MODE was on can be reconciled here once its transaction is
+   * known, without losing the original record or its timestamp.
+   */
+  markConfirmed(betId: string, txHash: string): StoredBet | undefined {
+    const bet = this.bets.get(betId);
+    if (!bet) return undefined;
+
+    bet.status = 'CONFIRMED';
+    bet.txHash = txHash;
+    bet.submittedAt = bet.submittedAt ?? new Date().toISOString();
+    bet.confirmedAt = new Date().toISOString();
+    bet.failedAt = undefined;
+    bet.failureReason = undefined;
+    return bet;
+  }
+
+  /** Mark an on-chain submission as rejected. */
+  markFailed(betId: string, failureReason: string): StoredBet | undefined {
+    const bet = this.bets.get(betId);
+    if (!bet) return undefined;
+
+    bet.status = 'FAILED';
+    bet.failedAt = new Date().toISOString();
+    bet.failureReason = failureReason;
+    return bet;
+  }
+
+  getBet(betId: string): StoredBet | undefined {
+    const bet = this.bets.get(betId);
+    return bet ? { ...bet } : undefined;
+  }
+
+  /** All bets, newest first, optionally narrowed by address/round/status. */
+  getBets(query: BetQuery = {}): StoredBet[] {
+    return Array.from(this.bets.values())
+      .filter(bet => {
+        if (query.address && bet.address !== query.address) return false;
+        if (query.roundId && bet.roundId !== query.roundId) return false;
+        if (query.status && bet.status !== query.status) return false;
+        return true;
+      })
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.id.localeCompare(a.id))
+      .map(bet => ({ ...bet }));
+  }
+
+  /** Count of bets per reconciliation status, for admin/audit summaries. */
+  getReconciliationSummary(): Record<BetStatus, number> {
+    const summary: Record<BetStatus, number> = {
+      STUB: 0,
+      SUBMITTED: 0,
+      CONFIRMED: 0,
+      FAILED: 0,
+    };
+    for (const bet of this.bets.values()) {
+      summary[bet.status]++;
+    }
+    return summary;
   }
 
   getRounds(): StoredRound[] {
@@ -106,6 +265,14 @@ class BetStore {
     return Array.from(this.rounds.values()).find(
       r => r.mode === mode && r.status === 'live'
     );
+  }
+
+  /** Restore seed state. Test-isolation helper. */
+  reset(): void {
+    this.rounds = new Map(SEED_ROUNDS.map(r => [r.id, { ...r }]));
+    this.bets = new Map();
+    this.totalBetsCount = 0;
+    this.betSequence = 0;
   }
 }
 
