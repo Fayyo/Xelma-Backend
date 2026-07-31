@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import roundService from '../services/round.service';
 import resolutionService from '../services/resolution.service';
 import { requireAdmin, requireOracle, AuthenticatedRequest } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/errorHandler.middleware';
 import { toDecimal, toDecimalString } from '../utils/decimal.util';
 import { adminRoundRateLimiter, oracleResolveRateLimiter } from '../middleware/rateLimiter.middleware';
 import { validate } from '../middleware/validate.middleware';
@@ -110,35 +111,31 @@ const router = Router();
  *             -H "Authorization: Bearer $TOKEN" \\
  *             -d '{"mode":0,"startPrice":0.1234,"duration":300}'
  */
-router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSchema), (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-        const { mode, startPrice, duration, priceRanges } = req.body;
-        const gameMode = mode === 0 ? 'UP_DOWN' : 'LEGENDS';
-        const round = await roundService.startRound(
-          gameMode,
-          startPrice,
-          duration,
-          priceRanges,
-        );
+router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { mode, startPrice, duration, priceRanges } = req.body;
+    const gameMode = mode === 0 ? 'UP_DOWN' : 'LEGENDS';
+    const round = await roundService.startRound(
+      gameMode,
+      startPrice,
+      duration,
+      priceRanges,
+    );
 
-        res.json({
-            success: true,
-            round: {
-                id: round.id,
-                mode: round.mode,
-                status: round.status,
-                startTime: round.startTime,
-                endTime: round.endTime,
-                startPrice: toDecimalString(round.startPrice),
-                sorobanRoundId: round.sorobanRoundId,
-                isSoroban: round.isSoroban,
-                priceRanges: round.priceRanges,
-            },
-        });
-    } catch (error) {
-        next(error);
-    }
-}) as any);
+    res.json({
+        success: true,
+        round: {
+            id: round.id,
+            mode: round.mode,
+            status: round.status,
+            startTime: round.startTime,
+            endTime: round.endTime,
+            startPrice: toDecimalString(round.startPrice),
+            sorobanRoundId: round.sorobanRoundId,
+            isSoroban: round.isSoroban,
+            priceRanges: round.priceRanges,
+        },
+    });
+}));
 
 /**
  * @swagger
@@ -328,34 +325,30 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  *             -H "Authorization: Bearer $TOKEN" \\
  *             -d '{"finalPrice":0.2345}'
  */
-router.post('/:id/resolve', requireOracle, oracleResolveRateLimiter, validate(resolveRoundSchema), (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params;
-        const { finalPrice } = req.body;
+router.post('/:id/resolve', requireOracle, oracleResolveRateLimiter, validate(resolveRoundSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+    const { finalPrice } = req.body;
 
-        const { outcome, round } = await resolutionService.resolveRound(id, toDecimal(finalPrice));
+    const { outcome, round } = await resolutionService.resolveRound(id, toDecimal(finalPrice));
 
-        if (!round) {
-            return res.status(404).json({ success: false, error: "Round not found" });
-        }
-
-        res.json({
-            success: true,
-            outcome,
-            round: {
-                id: round.id,
-                status: round.status,
-                startPrice: toDecimalString(round.startPrice),
-                endPrice: round.endPrice !== null && round.endPrice !== undefined ? toDecimalString(round.endPrice) : null,
-                resolvedAt: round.resolvedAt,
-                predictions: round.predictions ? round.predictions.length : 0,
-                winners: round.predictions ? round.predictions.filter((p: any) => p.won === true).length : 0,
-            },
-        });
-    } catch (error) {
-        next(error);
+    if (!round) {
+        return res.status(404).json({ success: false, error: "Round not found" });
     }
-}) as any);
+
+    res.json({
+        success: true,
+        outcome,
+        round: {
+            id: round.id,
+            status: round.status,
+            startPrice: toDecimalString(round.startPrice),
+            endPrice: round.endPrice !== null && round.endPrice !== undefined ? toDecimalString(round.endPrice) : null,
+            resolvedAt: round.resolvedAt,
+            predictions: round.predictions ? round.predictions.length : 0,
+            winners: round.predictions ? round.predictions.filter((p: any) => p.won === true).length : 0,
+        },
+    });
+}));
 
 /**
  * @swagger
