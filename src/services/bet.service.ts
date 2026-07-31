@@ -105,6 +105,34 @@ export class BetService {
 
     return result;
   }
+
+  /**
+   * Claims pending on-chain winnings for the authenticated wallet.
+   * Stub mode records a no-op claim for local/hackathon flows.
+   */
+  async claimWinnings(
+    address: string,
+    idempotencyKey?: string
+  ): Promise<{ state: string; amount: number; txHash?: string }> {
+    let result: { state: string; amount: number; txHash?: string };
+
+    if (process.env.BET_STUB_MODE === "true") {
+      logger.info("Claim winnings stub recorded", { address, idempotencyKey });
+      result = { state: "stub", amount: 0 };
+    } else {
+      logger.info("Claiming winnings on-chain", { address, idempotencyKey });
+      result = await sorobanService.claimWinnings(address);
+    }
+
+    betAuditService.emitClaimAccepted({
+      address,
+      amount: result.amount,
+      result: result.state,
+      txHash: result.txHash,
+    });
+
+    return result;
+  }
 }
 
 export default new BetService();
