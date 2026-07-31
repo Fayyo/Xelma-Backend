@@ -1,4 +1,5 @@
-import type { Config } from "jest";
+import type { Config } from "@jest/types";
+type JestConfig = Config.InitialOptions;
 
 const integrationTestFiles = [
   "auth.routes.spec.ts",
@@ -20,6 +21,7 @@ const integrationTestFiles = [
   "notifications.routes.spec.ts",
   "performance.spec.ts",
   "prediction-concurrency.spec.ts",
+  "tournament-concurrency.spec.ts",
   "predictions.routes.spec.ts",
   "rate-limit-visibility.spec.ts",
   "requestId.middleware.spec.ts",
@@ -31,10 +33,11 @@ const integrationTestFiles = [
   "socket.spec.ts",
   "user.routes.spec.ts",
   "validate.middleware.spec.ts",
+  "redis-adapter.spec.ts",
 ];
 
 // Base configuration shared between unit and integration tests
-const baseConfig: Partial<Config> = {
+const baseConfig: Partial<JestConfig> = {
   preset: "ts-jest",
   testEnvironment: "node",
   roots: ["<rootDir>/src"],
@@ -55,7 +58,7 @@ const baseConfig: Partial<Config> = {
 };
 
 // Unit tests - fast, no external dependencies
-const unitConfig: Config = {
+const unitConfig: JestConfig = {
   ...baseConfig,
   displayName: "unit",
   testMatch: [
@@ -70,7 +73,7 @@ const unitConfig: Config = {
 };
 
 // Integration tests - require PostgreSQL and services
-const integrationConfig: Config = {
+const integrationConfig: JestConfig = {
   ...baseConfig,
   displayName: "integration",
   testMatch: [
@@ -79,7 +82,7 @@ const integrationConfig: Config = {
   setupFiles: ["<rootDir>/jest.setup.js"],
 };
 
-const config: Config = {
+const config: JestConfig = {
   ...baseConfig,
   testMatch: ["**/*.spec.ts"],
   setupFiles: ["<rootDir>/jest.setup.js"],

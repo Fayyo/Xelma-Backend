@@ -29,8 +29,9 @@ export const VERSIONED_ALIAS_ALLOWLIST: string[] = [
  * Intentional cross-app route differences between the production (`index.ts`)
  * and hackathon (`app.ts`) entrypoints.
  *
- * Shared mounts (user, bets, tournaments, chat, notifications, leaderboard GET,
- * metrics, docs, and `/api/prices`) must NOT appear here — they exist in both apps.
+ * Shared mounts (user, bets, tournaments, rounds, chat, notifications,
+ * leaderboard GET, metrics, docs, and `/api/prices`) must NOT appear here —
+ * they exist in both apps.
  */
 export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   // ── Main-only ─────────────────────────────────────────────────────────────
@@ -42,11 +43,6 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "POST", path: "/api/auth/challenge", only: "main", reason: "Wallet auth flow is not part of the mock demo." },
   { method: "POST", path: "/api/auth/connect", only: "main", reason: "Wallet auth flow is not part of the mock demo." },
   { method: "POST", path: "/api/auth/verify", only: "main", reason: "Wallet auth flow is not part of the mock demo." },
-  { method: "GET", path: "/api/rounds/:id", only: "main", reason: "Round detail lookup is production-only." },
-  { method: "GET", path: "/api/rounds/active", only: "main", reason: "Active-round lookup is production-only." },
-  { method: "POST", path: "/api/rounds/start", only: "main", reason: "Admin round creation is production-only." },
-  { method: "POST", path: "/api/rounds/:id/resolve", only: "main", reason: "Oracle round resolution is production-only." },
-  { method: "POST", path: "/api/rounds/:id/simulate", only: "main", reason: "Round simulation is production-only." },
   { method: "POST", path: "/api/predictions/submit", only: "main", reason: "Prediction submission is production-only." },
   { method: "POST", path: "/api/predictions/batch-submit", only: "main", reason: "Prediction submission is production-only." },
   { method: "GET", path: "/api/predictions/user", only: "main", reason: "Prediction history is production-only." },
@@ -64,15 +60,12 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api/admin/dead-letter", only: "main", reason: "Admin surface is production-only." },
   { method: "POST", path: "/api/admin/dead-letter/retry-all", only: "main", reason: "Admin surface is production-only." },
   { method: "POST", path: "/api/admin/dead-letter/:id/retry", only: "main", reason: "Admin surface is production-only." },
+  { method: "GET", path: "/api/admin/bet-audit", only: "main", reason: "Admin bet-audit surface is production-only." },
 
   // ── Hackathon-only ────────────────────────────────────────────────────────
   { method: "GET", path: "/api", only: "hackathon", reason: "Hackathon app mounts the health router under /api instead of /health." },
   { method: "GET", path: "/api/health", only: "hackathon", reason: "Lightweight health sub-route surfaces as /api/health when the shared health router is mounted under /api." },
   { method: "GET", path: "/api/stats", only: "hackathon", reason: "Landing-page platform stats are hackathon-only." },
-  { method: "GET", path: "/api/rounds", only: "hackathon", reason: "Hackathon mock rounds collection; production exposes /api/rounds/active and /api/rounds/:id." },
-  { method: "POST", path: "/api/rounds/:id/bet", only: "hackathon", reason: "Hackathon mock bet stub." },
-  { method: "POST", path: "/api/rounds/hackathon/up-down/:id/bet", only: "hackathon", reason: "Hackathon mock up-down bet stub." },
-  { method: "POST", path: "/api/rounds/hackathon/precision/:id/bet", only: "hackathon", reason: "Hackathon mock precision bet stub." },
 ];
 
 export function routeKey(record: RouteRecord): string {
