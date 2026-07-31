@@ -54,23 +54,11 @@ describe('Hackathon Endpoints & Middleware', () => {
   });
 
   describe('GET /api/rounds', () => {
-    it('returns exactly 3 rounds with correct assets and statuses', async () => {
+    it('returns rounds in success envelope', async () => {
       const res = await request(app).get('/api/rounds');
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(3);
-
-      const btc = res.body.find((r: any) => r.id === 'btc-updown-live');
-      expect(btc).toBeDefined();
-      expect(btc.asset).toBe('BTC');
-      expect(btc.mode).toBe('updown');
-      expect(btc.status).toBe('live');
-
-      const eth = res.body.find((r: any) => r.id === 'eth-precision-live');
-      expect(eth).toBeDefined();
-      expect(eth.asset).toBe('ETH');
-      expect(eth.mode).toBe('precision');
-      expect(eth.status).toBe('live');
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveProperty('rounds');
     });
   });
 

@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate.middleware";
 import { authenticateUser, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { asyncHandler } from "../middleware/errorHandler.middleware";
 import {
   joinTournamentParamsSchema,
   tournamentListQuerySchema,
@@ -112,12 +113,11 @@ router.post(
   "/:id/join",
   authenticateUser,
   validate(joinTournamentParamsSchema, "params"),
-  (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const userId = req.user.userId;
-      const { id } = req.params;
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user.userId;
+    const { id } = req.params;
 
-      const result = await tournamentService.joinTournament(userId, id);
+    const result = await tournamentService.joinTournament(userId, id);
 
       return sendSuccess(res, {
         tournamentId: id,
