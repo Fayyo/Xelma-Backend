@@ -4,7 +4,7 @@ import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import healthRoutes from './routes/health';
 import statsRoutes from './routes/stats';
-import roundsRoutes from './routes/rounds';
+import roundsRoutes from './routes/rounds.routes';
 import leaderboardRoutes from './routes/leaderboard';
 import userRoutes from './routes/user.routes';
 import betsRoutes from './routes/bets.routes';
