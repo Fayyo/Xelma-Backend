@@ -3,6 +3,7 @@ import { validateStellarAddressParam } from '../utils/stellar-address.util';
 import hackathonService from '../services/hackathon.service';
 import sorobanService from '../services/soroban.service';
 import logger from '../utils/logger';
+import { sendSuccess } from '../utils/response';
 
 const router = Router();
 
@@ -14,6 +15,27 @@ function computeXp(totalWins: number, bestStreak: number): number {
   return totalWins * 100 + bestStreak * 50;
 }
 
+function computeRankTitle(xp: number): string {
+  if (xp >= 10000) return 'Diamond';
+  if (xp >= 5000) return 'Platinum';
+  if (xp >= 3000) return 'Gold';
+  if (xp >= 1500) return 'Silver';
+  if (xp >= 500) return 'Bronze';
+  return 'Rookie';
+}
+
+/**
+ * Computes an XP score from on-chain user stats.
+ * XP = totalWins × 100 + bestStreak × 50
+ */
+function computeXp(totalWins: number, bestStreak: number): number {
+  return totalWins * 100 + bestStreak * 50;
+}
+
+/**
+ * Derives a rank title from XP.
+ * Thresholds match production profile expectations.
+ */
 function computeRankTitle(xp: number): string {
   if (xp >= 10000) return 'Diamond';
   if (xp >= 5000) return 'Platinum';
@@ -43,7 +65,37 @@ function computeRankTitle(xp: number): string {
  *           type: string
  *     responses:
  *       200:
- *         description: Wallet-specific stats
+ *         description: Wallet-specific stats matching production profile contract
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     totalWins:
+ *                       type: integer
+ *                     totalLosses:
+ *                       type: integer
+ *                     currentStreak:
+ *                       type: integer
+ *                     pendingWinnings:
+ *                       type: string
+ *                     isRegistered:
+ *                       type: boolean
+ *                 profile:
+ *                   type: object
+ *                   properties:
+ *                     balance:
+ *                       type: number
+ *                     xp:
+ *                       type: integer
+ *                     rankTitle:
+ *                       type: string
  *       400:
  *         description: Invalid wallet address
  */
@@ -69,7 +121,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
       // Convert pending winnings from stroops to XLM for the response
       const pendingWinningsXlm = Number(pendingWinnings) / 10_000_000;
 
-      return res.json({
+      return sendSuccess(res, {
         address,
         balance,
         pendingWinnings: pendingWinningsXlm,
@@ -89,7 +141,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
     logger.info('Soroban unavailable — returning DB/mock stats', { address });
     const stats = await hackathonService.getUserStats(address);
 
-    return res.json({
+    return sendSuccess(res, {
       address: stats.address,
       balance: stats.balance,
       pendingWinnings: stats.pendingWinnings,

@@ -42,9 +42,10 @@ services:
         sync: false
       - key: COINGECKO_API_URL
         value: https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd
-      - key: STELLAR_RPC_URL
+      # Canonical Soroban names (aliases STELLAR_RPC_URL / CONTRACT_ID also accepted)
+      - key: SOROBAN_RPC_URL
         value: https://soroban-testnet.stellar.org
-      - key: CONTRACT_ID
+      - key: SOROBAN_CONTRACT_ID
         sync: false
 
   # ── Production (Full Backend) ───────────────────────────────────────────

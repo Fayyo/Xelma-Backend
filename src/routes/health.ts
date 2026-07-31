@@ -181,7 +181,7 @@ router.get('/health', (_req: Request, res: Response) => {
 
   const overallStatus: 'ok' | 'degraded' = sorobanReady ? 'ok' : 'degraded';
 
-  res.json({
+  sendSuccess(res, {
     status: overallStatus,
     timestamp: Date.now(),
     services,

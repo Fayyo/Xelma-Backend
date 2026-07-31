@@ -26,9 +26,13 @@ jest.mock('../services/soroban.service', () => ({
   default: { getActiveRound: jest.fn().mockResolvedValue(null), isReady: jest.fn().mockReturnValue(false) },
 }));
 
+// Both apps are now built by the same factory, so importing either one loads
+// every router — including src/routes/rounds.ts, which needs betRateLimiter.
+// An omitted export here surfaces as "Route.post() requires a callback
+// function but got a [object Undefined]" at import time.
 jest.mock('../middleware/rateLimiter', () => {
   const pass = (_req: any, _res: any, next: any) => next();
-  return { apiRateLimiter: pass, writeRateLimiter: pass };
+  return { apiRateLimiter: pass, writeRateLimiter: pass, betRateLimiter: pass };
 });
 
 jest.mock('../lib/prisma', () => ({ prisma: {} }));

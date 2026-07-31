@@ -5,12 +5,21 @@ import { UserRole } from "@prisma/client";
 import { createApp } from "../app";
 import { generateToken } from "../utils/jwt.util";
 
-jest.mock("../middleware/rateLimiter", () => {
+jest.mock("../middleware/rateLimiter.middleware", () => {
   const mockMiddleware = (req: any, res: any, next: any) => next();
   return {
     apiRateLimiter: mockMiddleware,
     writeRateLimiter: mockMiddleware,
     betRateLimiter: mockMiddleware,
+    adminRoundRateLimiter: mockMiddleware,
+    oracleResolveRateLimiter: mockMiddleware,
+    challengeRateLimiter: mockMiddleware,
+    connectRateLimiter: mockMiddleware,
+    authRateLimiter: mockMiddleware,
+    chatMessageRateLimiter: mockMiddleware,
+    predictionRateLimiter: mockMiddleware,
+    batchPredictionRateLimiter: mockMiddleware,
+    batchLeaderboardRateLimiter: mockMiddleware,
   };
 });
 
@@ -57,7 +66,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
+        data: { message: "Bet recorded (stub)" },
       });
     });
 
@@ -70,7 +79,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
+        data: { message: "Bet recorded (stub)" },
       });
     });
 
@@ -186,7 +195,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Precision bet recorded (stub)",
+        data: { message: "Precision bet recorded (stub)" },
       });
     });
 
@@ -199,7 +208,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Precision bet recorded (stub)",
+        data: { message: "Precision bet recorded (stub)" },
       });
     });
 
@@ -277,7 +286,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
+        data: { message: "Bet recorded (stub)" },
       });
     });
 
@@ -290,7 +299,7 @@ describe("Hackathon Bet Routes - Auth + Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
+        data: { message: "Bet recorded (stub)" },
       });
     });
 

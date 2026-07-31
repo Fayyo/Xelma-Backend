@@ -1,5 +1,6 @@
 import path from 'path';
 import swaggerJSDoc from 'swagger-jsdoc';
+import { sharedComponents } from './shared-components';
 
 const PORT = process.env.PORT || 3001;
 const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
@@ -74,17 +75,21 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
           required: ['token', 'user'],
           additionalProperties: false,
         },
+        // ── Shared base (re-declared via allOf with hackathon-specific fields) ──
         ErrorResponse: {
-          type: 'object',
-          properties: {
-            error: { type: 'string' },
-            message: { type: 'string' },
-            code: { type: 'string' },
-            requestId: { type: 'string' },
-            timestamp: { type: 'string', format: 'date-time' },
-          },
-          required: ['error', 'message', 'code'],
+          allOf: [
+            { $ref: '#/components/schemas/BaseErrorResponse' },
+            {
+              type: 'object',
+              properties: {
+                requestId: { type: 'string' },
+                timestamp: { type: 'string', format: 'date-time' },
+              },
+            },
+          ],
         },
+        // ── Shared base schema (imported from shared-components) ──
+        ...sharedComponents.schemas,
         NotFoundResponse: {
           type: 'object',
           properties: {
@@ -95,6 +100,8 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
         },
         PriceResponse: {
           type: 'object',
+          description:
+            'Multi-asset ticker payload inside the success envelope from GET /api/prices. The hackathon app does not expose GET /api/price (that path is production-only XLM oracle).',
           properties: {
             BTC: { type: 'number', example: 67420.12 },
             ETH: { type: 'number', example: 3241.55 },
@@ -204,7 +211,11 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     tags: [
       { name: 'auth', description: 'Wallet authentication and JWT issuance' },
       { name: 'health', description: 'Service health checks' },
-      { name: 'prices', description: 'Live crypto prices (CoinGecko)' },
+      {
+        name: 'prices',
+        description:
+          'Multi-asset live crypto prices via GET /api/prices (CoinGecko). Not the same as production GET /api/price (XLM oracle).',
+      },
       { name: 'stats', description: 'Platform statistics' },
       { name: 'rounds', description: 'Mock prediction rounds' },
       { name: 'leaderboard', description: 'Mock leaderboard data' },

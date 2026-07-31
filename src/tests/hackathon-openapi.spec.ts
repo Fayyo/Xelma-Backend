@@ -19,4 +19,13 @@ describe('Hackathon OpenAPI spec', () => {
       expect(paths[path]?.[method]).toBeDefined();
     }
   });
+
+  it('documents /api/prices as multi-asset and notes /api/price is production-only', () => {
+    const paths = (hackathonSwaggerSpec as { paths?: Record<string, any> }).paths ?? {};
+    const pricesOp = paths['/api/prices']?.get;
+
+    expect(pricesOp).toBeDefined();
+    expect(String(pricesOp.description ?? '')).toMatch(/\/api\/price/);
+    expect(paths['/api/price']).toBeUndefined();
+  });
 });
