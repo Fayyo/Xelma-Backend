@@ -70,4 +70,20 @@ describe("route parity", () => {
 
     expect(new Set(keys).size).toBe(keys.length);
   });
+
+  it("ties every accepted difference back to a feature flag", () => {
+    const unattributed = PARITY_ALLOWLIST.filter(
+      (entry) => !entry.flag || entry.flag.trim() === "",
+    ).map(routeKey);
+
+    expect(unattributed).toEqual([]);
+  });
+
+  it("gives every allowlist entry a non-empty reason", () => {
+    const unexplained = PARITY_ALLOWLIST.filter(
+      (entry) => !entry.reason || entry.reason.trim() === "",
+    ).map(routeKey);
+
+    expect(unexplained).toEqual([]);
+  });
 });

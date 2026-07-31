@@ -1,3 +1,9 @@
+/**
+ * Hackathon server (`npm run dev:hackathon`).
+ *
+ * Chooses the mode and owns the process lifecycle; all HTTP wiring comes from
+ * `src/app-factory.ts` via `src/app.ts`.
+ */
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 
