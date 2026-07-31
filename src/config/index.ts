@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { createValidator, ConfigValidationError } from "./validation";
+import logger from "../utils/logger";
 
 dotenv.config();
 
@@ -296,7 +297,9 @@ try {
     const isTestEnv =
       process.env.NODE_ENV === "test" || Boolean(process.env.JEST_WORKER_ID);
     if (!isTestEnv) {
-      console.error(`\n${err.message}\n`);
+      logger.error("Config validation failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
       process.exit(1);
     }
     throw err;
