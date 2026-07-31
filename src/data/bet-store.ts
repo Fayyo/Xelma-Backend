@@ -1,16 +1,4 @@
-/**
- * Lifecycle of a bet record, from local stub through on-chain settlement.
- *
- *   STUB      recorded locally only (BET_STUB_MODE=true); no chain call made
- *   SUBMITTED handed to Soroban, outcome not yet known
- *   CONFIRMED accepted on-chain; `txHash` is populated
- *   FAILED    chain submission rejected; `failureReason` is populated
- *
- * A STUB bet can later be reconciled to CONFIRMED once the corresponding
- * on-chain transaction is identified, which is what makes the stub → live
- * migration auditable.
- */
-export type BetStatus = 'STUB' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+import { decAdd, toNumber } from '../utils/decimal.util';
 
 export interface StoredBet {
   id: string;
@@ -105,26 +93,26 @@ class BetStore {
     this.rounds = new Map(SEED_ROUNDS.map(r => [r.id, { ...r }]));
   }
 
-  private nextBetId(): string {
-    this.betSequence++;
-    return `bet-${this.betSequence}`;
+  addUpDownBet(roundId: string, address: string, amount: number, side: 'UP' | 'DOWN'): void {
+    const round = this.rounds.get(roundId);
+    if (!round || round.mode !== 'updown') return;
+
+    if (side === 'UP') round.poolUp = toNumber(decAdd(round.poolUp, amount));
+    else round.poolDown = toNumber(decAdd(round.poolDown, amount));
+    round.totalPool = toNumber(decAdd(round.poolUp, round.poolDown));
+
+    this.bets.push({ roundId, address, amount, side, timestamp: new Date().toISOString() });
+    this.totalBetsCount++;
   }
 
-  /**
-   * Record a bet and return the stored record so the caller can reconcile it
-   * against an on-chain transaction later.
-   *
-   * The record is always created, even when no matching round is available.
-   * Pool accounting only runs when the round exists and matches the mode —
-   * an unreconcilable bet record is still better than a lost one.
-   */
-  private recordBet(bet: Omit<StoredBet, 'id' | 'timestamp'>): StoredBet {
-    const stored: StoredBet = {
-      ...bet,
-      id: this.nextBetId(),
-      timestamp: new Date().toISOString(),
-    };
-    this.bets.set(stored.id, stored);
+  addPrecisionBet(roundId: string, address: string, amount: number, predictedPrice: number): void {
+    const round = this.rounds.get(roundId);
+    if (!round || round.mode !== 'precision') return;
+
+    round.totalPool = toNumber(decAdd(round.totalPool, amount));
+    round.predictionCount++;
+
+    this.bets.push({ roundId, address, amount, predictedPrice, timestamp: new Date().toISOString() });
     this.totalBetsCount++;
     return stored;
   }
