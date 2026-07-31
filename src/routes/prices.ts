@@ -5,6 +5,14 @@ import priceOracle from '../services/oracle';
 const router = Router();
 
 /**
+ * The legacy single-asset XLM oracle endpoint lives on its own router so the
+ * app factory can gate it behind the `legacyPriceEndpoint` flag: the hackathon
+ * app serves `GET /api/prices` but must not expose `GET /api/price`.
+ * See src/app-factory.ts and docs/runtime-modes.md.
+ */
+export const legacyXlmPriceRouter = Router();
+
+/**
  * @openapi
  * /api/prices:
  *   get:
@@ -124,7 +132,7 @@ router.get('/prices', async (_req: Request, res: Response) => {
  *               source: live
  *               timestamp: '2026-07-29T12:00:05.000Z'
  */
-router.get('/price', (_req: Request, res: Response) => {
+legacyXlmPriceRouter.get('/price', (_req: Request, res: Response) => {
   const price = priceOracle.getPriceString();
   const lastUpdatedAt = priceOracle.getLastUpdatedAt();
   res.json({
