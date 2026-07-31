@@ -1,4 +1,5 @@
 import swaggerJSDoc from 'swagger-jsdoc';
+import { sharedComponents } from './shared-components';
 
 const PORT = process.env.PORT || 3000;
 const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
@@ -27,40 +28,31 @@ export const swaggerSpec = swaggerJSDoc({
         },
       },
       schemas: {
+        // ── Shared base (re-declared via allOf with production-specific fields) ──
         ErrorResponse: {
-          type: 'object',
-          description: 'Standard error response returned by all API endpoints on failure.',
-          properties: {
-            error: {
-              type: 'string',
-              description: 'Error class name (e.g. ValidationError, AuthenticationError, NotFoundError)',
-              example: 'ValidationError',
-            },
-            message: {
-              type: 'string',
-              description: 'Human-readable description of the error',
-              example: 'walletAddress is required',
-            },
-            code: {
-              type: 'string',
-              description: 'Machine-readable error code for programmatic handling',
-              example: 'VALIDATION_ERROR',
-            },
-            details: {
-              type: 'array',
-              description: 'Field-level validation details (present on validation errors only)',
-              items: {
-                type: 'object',
-                properties: {
-                  field: { type: 'string', example: 'walletAddress' },
-                  message: { type: 'string', example: 'walletAddress is required' },
+          allOf: [
+            { $ref: '#/components/schemas/BaseErrorResponse' },
+            {
+              type: 'object',
+              properties: {
+                details: {
+                  type: 'array',
+                  description: 'Field-level validation details (present on validation errors only)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      field: { type: 'string', example: 'walletAddress' },
+                      message: { type: 'string', example: 'walletAddress is required' },
+                    },
+                    required: ['field', 'message'],
+                  },
                 },
-                required: ['field', 'message'],
               },
             },
-          },
-          required: ['error', 'message', 'code'],
+          ],
         },
+        // ── Shared base schema (imported from shared-components) ──
+        ...sharedComponents.schemas,
         RateLimitResponse: {
           allOf: [{ $ref: '#/components/schemas/ErrorResponse' }],
           example: {

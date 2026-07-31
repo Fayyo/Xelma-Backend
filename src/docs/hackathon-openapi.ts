@@ -1,5 +1,6 @@
 import path from 'path';
 import swaggerJSDoc from 'swagger-jsdoc';
+import { sharedComponents } from './shared-components';
 
 const PORT = process.env.PORT || 3001;
 const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
@@ -16,17 +17,21 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     servers: [{ url: API_BASE_URL }],
     components: {
       schemas: {
+        // ── Shared base (re-declared via allOf with hackathon-specific fields) ──
         ErrorResponse: {
-          type: 'object',
-          properties: {
-            error: { type: 'string' },
-            message: { type: 'string' },
-            code: { type: 'string' },
-            requestId: { type: 'string' },
-            timestamp: { type: 'string', format: 'date-time' },
-          },
-          required: ['error', 'message', 'code'],
+          allOf: [
+            { $ref: '#/components/schemas/BaseErrorResponse' },
+            {
+              type: 'object',
+              properties: {
+                requestId: { type: 'string' },
+                timestamp: { type: 'string', format: 'date-time' },
+              },
+            },
+          ],
         },
+        // ── Shared base schema (imported from shared-components) ──
+        ...sharedComponents.schemas,
         NotFoundResponse: {
           type: 'object',
           properties: {
