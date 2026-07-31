@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { MOCK_PLATFORM_STATS } from "../data/mockData";
+import logger from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,7 +83,9 @@ export async function getPlatformStats(): Promise<PlatformStats> {
         ]);
     } catch (err) {
         dbAvailable = false;
-        console.error("[stats.service] DB query failed, using mock fallback:", err);
+        logger.error("[stats.service] DB query failed, using mock fallback:", {
+          error: err instanceof Error ? err.message : String(err),
+        });
     }
 
     // 4. DB unreachable → fall back to mock constants (with isFallback=true)

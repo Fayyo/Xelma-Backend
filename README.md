@@ -14,22 +14,15 @@ TypeScript/Node.js backend for the [Xelma](https://github.com/TevaLabs/Xelma-Blo
   - [Core Services](#core-services)
   - [Routes & Endpoints](#routes--endpoints)
   - [Middleware](#middleware)
-  - [Database Schema](#database-schema)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Environment Setup](#environment-setup)
 - [Running the Server](#running-the-server)
 - [API Documentation](#api-documentation)
-  - [Authentication Endpoints](#authentication-endpoints)
-  - [Round Management](#round-management)
-  - [Prediction Endpoints](#prediction-endpoints)
-  - [Leaderboard & User Stats](#leaderboard--user-stats)
-  - [WebSocket Events](#websocket-events)
 - [Testing](#testing)
 - [Migration Safety](#migration-safety)
 - [Scripts](#scripts)
 - [Troubleshooting](#troubleshooting)
-- [Related Repositories](#related-repositories)
 
 ---
 
@@ -550,9 +543,7 @@ pnpm install
 yarn install
 ```
 
-This will automatically:
-- Install all dependencies including `@tevalabs/xelma-bindings`
-- Run `postinstall` script to build the TypeScript code
+This installs all dependencies including `@tevalabs/xelma-bindings`.
 
 ### 3. One-Command Local Infra (Docker Compose)
 
@@ -571,7 +562,7 @@ docker compose up --build
 | PostgreSQL | `5432` | `pg_isready -U xelma -d xelma` |
 | Redis (optional) | `6379` | `redis-cli ping` |
 
-The API container runs `prisma migrate deploy` on startup before booting `dist/index.js`.
+The API container runs `prisma migrate deploy` on startup before booting the server.
 
 To include Redis (for Socket.IO adapter / distributed locks):
 
@@ -612,73 +603,7 @@ cp .env.hackathon.example .env
 
 ### 2. Configure Environment Variables
 
-## Environment Variables
-
-This application requires specific environment variables to run securely. Create a `.env` file in the root directory based on `.env.example`.
-
-### Required Variables
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `JWT_SECRET` | Cryptographic secret used to sign and verify JSON Web Tokens. **App will refuse to start without this.** | *None* |
-
-*Note: For production, `JWT_SECRET` must be a cryptographically strong, random string (e.g., generated via `openssl rand -base64 32`).*
-
-Open `.env` and set the following:
-
-```env
-# Server Configuration
-PORT=3000
-NODE_ENV=development
-CLIENT_URL=http://localhost:5173
-
-# Database
-DATABASE_URL=postgresql://username:password@localhost:5432/xelma_db
-
-# Prisma / Postgres pool + timeout tuning (optional)
-# If set, these values override/augment DATABASE_URL query params at startup.
-# Defaults are production-safe and conservative.
-DB_CONNECTION_LIMIT=10
-DB_POOL_TIMEOUT_SECONDS=10
-DB_CONNECT_TIMEOUT_SECONDS=10
-DB_STATEMENT_TIMEOUT_MS=0
-DB_PGBOUNCER=false
-
-# JWT Authentication
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-JWT_EXPIRY=7d
-
-# Xelma Bindings API Key (if required by your setup)
-XELMA_API_KEY=your-xelma-api-key-here
-
-# Soroban Configuration
-SOROBAN_NETWORK=testnet  # or 'mainnet'
-SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-SOROBAN_CONTRACT_ID=your-deployed-contract-id
-
-# Stellar Keypairs (use Stellar Laboratory to generate)
-# Admin keypair for creating rounds
-SOROBAN_ADMIN_SECRET=S...your-admin-secret-key
-
-# Oracle keypair for resolving rounds
-SOROBAN_ORACLE_SECRET=S...your-oracle-secret-key
-
-# Round Scheduler
-ROUND_SCHEDULER_ENABLED=false  # Set to 'true' to enable automated rounds
-ROUND_SCHEDULER_MODE=UP_DOWN   # or 'LEGENDS'
-
-# API-only startup mode (skip oracle polling, schedulers, and price ticker)
-API_ONLY=false  # Set to 'true' to run as a stateless HTTP API only
-
-# Bet Mode: true = stub mode (records intent without on-chain calls), false = on-chain via Soroban
-BET_STUB_MODE=true
-
-# Price Oracle Configuration
-ORACLE_POLLING_INTERVAL_MS=10000    # Interval between price updates (ms)
-ORACLE_REQUEST_TIMEOUT_MS=5000     # Network timeout for requests (ms)
-ORACLE_MAX_RETRIES=3               # Max retry attempts for failed requests
-ORACLE_STALENESS_THRESHOLD_MS=60000 # Threshold for stale price data (ms)
-```
+See [`.env.example`](.env.example) for the full list of configurable variables. At minimum, set `DATABASE_URL` and `JWT_SECRET` before starting the server.
 
 #### Price Oracle Tuning
 
@@ -695,7 +620,7 @@ Operators can tune the oracle's behavior via environment variables to balance pr
 > otherwise a freshly-fetched price would be classified as stale immediately after
 > every poll. This invariant is enforced at startup by config validation.
 
-##### Settlement staleness guard (#229)
+##### Settlement staleness guard
 
 Round resolution must never settle against a frozen or broken price feed. When a
 process is actively polling the oracle, `resolutionService.resolveRound` refuses to
@@ -801,22 +726,6 @@ Starts the **production app** (`src/index.ts`) on `http://localhost:3001` with a
 npm run dev:hackathon
 ```
 
-See [docs/architecture.md](docs/architecture.md) for guidance on which server to run.
-
-### Local Render-Parity Bootstrap
-
-Use one command when you want local startup to perform the same Prisma
-preparation Render performs before booting the service:
-
-```bash
-npm run dev:render-parity
-```
-
-This runs `prisma generate`, applies committed migrations with
-`prisma migrate deploy`, then starts the hot-reload dev server. It expects a
-local `.env` with at least `DATABASE_URL` and `JWT_SECRET`; copy
-`.env.example` to `.env` if you are starting from a fresh checkout.
-
 ### Production Mode
 
 ```bash
@@ -882,7 +791,7 @@ Expected response:
 
 ---
 
-### Dead-letter queue for failed notifications and events
+### Dead-Letter Queue
 
 Notification creation and WebSocket emits go through a dead-letter queue
 (DLQ) so a transient DB blip, a not-yet-initialized socket layer, or a
@@ -1308,7 +1217,7 @@ Coverage thresholds are enforced in `jest.config.ts`. The current floors are:
 
 CI runs `npm run test:unit:coverage` (unit tests with coverage upload) and `npm run test:integration` (integration tests against a PostgreSQL service container) as separate parallel jobs.
 
-### Load test harness (#21)
+### Load test harness
 
 `npm run test:load` runs `src/tests/performance.spec.ts`, which exercises:
 
@@ -1360,15 +1269,17 @@ At minimum, migration PRs should include:
 | `npm run start:hackathon` | Run the hackathon/demo server (`dist/server.js`); this is the Render start command for the `xelma-backend-hackathon` profile (requires build) |
 | `npm run dev` | Start the **production** development server (`src/index.ts`) with hot-reload — use this for all feature work |
 | `npm run dev:hackathon` | Start the hackathon demo server (`src/server.ts`) — mock data only, no database required |
-| `npm run dev:render-parity` | Generate Prisma client, apply committed migrations, then start dev server |
 | `npm run build` | Compile TypeScript to JavaScript |
 | `npm test` | Run Jest test suite |
 | `npm run test:coverage` | Run Jest with coverage reporting and thresholds |
 | `npm run test:unit:coverage` | Run unit tests with coverage reporting and thresholds |
 | `npm run test:watch` | Run tests in watch mode |
-| `npm run test:load` | Run repeatable load baselines for prediction throughput and websocket fanout (#21) |
+| `npm run test:load` | Run repeatable load baselines for prediction throughput and websocket fanout |
 | `npm run ci` | Run lint, build, unit coverage, and integration tests |
 | `npm run prisma:generate` | Generate Prisma client |
+| `npm run prisma:migrate` | Run database migrations |
+| `npm run db:seed:mock` | Seed database with mock data |
+| `node dist/index.js` | Run production full backend (Prisma, Soroban, schedulers, WebSocket); use this command in production Render profile |
 | `npm run prisma:migrate` | Create/apply a Prisma dev migration for the core schema |
 | `npm run prisma:migrate:deploy` | Apply committed Prisma migrations without creating new ones |
 | `npm run db:migrate:hackathon` | Apply committed Drizzle migrations for the hackathon schema |
@@ -1376,12 +1287,11 @@ At minimum, migration PRs should include:
 | `npm run db:prepare` | Generate the Prisma client, then run `db:migrate` (the one-command DB setup used by CI and deploys) |
 | `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
 | `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
-| `npm run docs:postman` | Export Postman collection |
-| `npm run scorecard` | Run the production-readiness scorecard (see [#197](https://github.com/TevaLabs/Xelma-Backend/issues/197)) |
+| `npm run scorecard` | Run the production-readiness scorecard |
 
 ---
 
-## Error Code Catalog (#196)
+## Error Code Catalog
 
 Every error response from the API carries a stable machine-readable
 `code` (in addition to the HTTP status) so clients can branch on the
@@ -1417,7 +1327,7 @@ fails CI.
 
 ---
 
-## Production-Readiness Scorecard (#197)
+## Production-Readiness Scorecard
 
 `npm run scorecard` runs a small, zero-dependency set of "is this repo
 ready to deploy?" heuristics and prints a green / yellow / red
@@ -1520,557 +1430,6 @@ Can't reach database server at localhost:5432
 
 **Solution:**
 Set `ROUND_SCHEDULER_ENABLED=true` in `.env` and restart the server.
-
----
-
-## Xelma Backend Improvement Issue Backlog (Draft)
-
-The following are proposed issue drafts you can open in GitHub. They are based on the current backend code and prioritize security, correctness, reliability, and maintainability.
-
-### #1 Consolidate Prisma Client Usage to a Single Shared Instance
-Context
-Multiple files instantiate `new PrismaClient()` directly (for example middleware/services/socket), while `src/lib/prisma.ts` already provides a shared singleton. This can cause excess DB connections and inconsistent behavior across environments.
-
-What Needs to Happen
-- Replace direct `new PrismaClient()` usage with imports from `src/lib/prisma.ts`.
-- Ensure all services/middleware/socket paths use the same Prisma lifecycle.
-- Add a lightweight check/test to prevent regressions.
-
-Files to Create/Modify
-- `src/middleware/auth.middleware.ts`
-- `src/services/round.service.ts`
-- `src/services/notification.service.ts`
-- `src/services/scheduler.service.ts`
-- `src/socket.ts`
-
-Acceptance Criteria
-- No direct `new PrismaClient()` remains outside `src/lib/prisma.ts`.
-- App behavior is unchanged functionally.
-- No Prisma connection warnings during local development under load.
-
-How to Validate
-- Run `npm run build`.
-- Run `npm test`.
-- Start app and verify no repeated Prisma client initialization/connection warnings.
-
-PR Requirements
-- PR title: `refactor: centralize prisma client usage`
-- Include `Closes #[issue_id]` in PR description
-
-### #2 Refactor App Bootstrap for Testability and Graceful Shutdown
-Context
-`src/index.ts` starts polling, schedulers, WebSocket emission interval, and HTTP listen as import-time side effects. This makes integration testing harder and complicates graceful shutdown.
-
-What Needs to Happen
-- Introduce explicit `createApp()` and `startServer()` lifecycle functions.
-- Track interval/cron handles and close them on shutdown signals.
-- Add shutdown hooks for HTTP server and Prisma disconnect.
-
-Files to Create/Modify
-- `src/index.ts`
-- `src/services/oracle.ts`
-- `src/services/scheduler.service.ts`
-- `src/services/round-scheduler.service.ts`
-- `src/lib/prisma.ts`
-
-Acceptance Criteria
-- Importing app module does not automatically bind network ports.
-- Server exits cleanly on `SIGINT`/`SIGTERM`.
-- Test suites can initialize app without background jobs running unexpectedly.
-
-How to Validate
-- Run `npm test`.
-- Start app and stop with Ctrl+C; ensure clean shutdown logs with no hanging process.
-
-PR Requirements
-- PR title: `refactor: isolate startup side effects and add graceful shutdown`
-- Include `Closes #[issue_id]` in PR description
-
-### #3 Fix Round Mode Validation Bug in Start Round Endpoint
-Context
-`POST /api/rounds/start` validates mode with `if (!mode || mode < 0 || mode > 1)` which incorrectly rejects valid mode `0` (`UP_DOWN`).
-
-What Needs to Happen
-- Replace falsy checks with explicit numeric validation.
-- Add validation tests for `mode=0` and `mode=1`.
-
-Files to Create/Modify
-- `src/routes/rounds.routes.ts`
-- `src/tests/round.spec.ts`
-
-Test Scenarios
-- `mode=0` accepted.
-- `mode=1` accepted.
-- invalid values (`-1`, `2`, string) rejected with `400`.
-
-Acceptance Criteria
-- `UP_DOWN` rounds can be created via API.
-- Validation behavior is deterministic and covered by tests.
-
-How to Validate
-- Run `npm test -- --testPathPattern=round`.
-
-PR Requirements
-- PR title: `fix: correct mode validation for round creation`
-- Include `Closes #[issue_id]` in PR description
-
-### #4 Enforce Authenticated User Identity in Predictions Endpoint
-Context
-`POST /api/predictions/submit` currently accepts `userId` from request body despite requiring JWT auth. This allows user impersonation by submitting predictions for another user.
-
-What Needs to Happen
-- Remove `userId` from request body contract.
-- Use `req.user.userId` as the single source of identity.
-- Update OpenAPI docs and tests.
-
-Files to Create/Modify
-- `src/routes/predictions.routes.ts`
-- `src/docs/openapi.ts`
-- `src/tests/` (add predictions route tests)
-
-Acceptance Criteria
-- Endpoint ignores/rejects external `userId` input.
-- Authenticated user can only submit for self.
-- Docs reflect updated request schema.
-
-How to Validate
-- Add test with mismatched body `userId`; assert request fails or body field is ignored.
-- Run `npm test`.
-
-PR Requirements
-- PR title: `security: bind prediction submissions to authenticated user`
-- Include `Closes #[issue_id]` in PR description
-
-### #5 Make Prediction Submission Atomic with Database Transactions
-Context
-Prediction placement performs multiple writes (prediction insert, balance update, pool update, Soroban call) without transactional boundaries, risking partial state on failure or concurrency races.
-
-What Needs to Happen
-- Use Prisma transactions for DB writes.
-- Define contract for external Soroban call ordering and rollback strategy.
-- Add concurrency-aware tests for duplicate submissions and balance integrity.
-
-Files to Create/Modify
-- `src/services/prediction.service.ts`
-- `src/tests/` (new prediction service tests)
-
-Acceptance Criteria
-- No partial DB updates when any step fails.
-- User balance and round pools remain consistent under concurrent submissions.
-
-How to Validate
-- Run test suite including failure-injection scenarios.
-- Run stress test script for concurrent submissions.
-
-PR Requirements
-- PR title: `fix: make prediction placement transactional and race-safe`
-- Include `Closes #[issue_id]` in PR description
-
-### #6 Prevent Multiple Active Rounds from Being Created Concurrently
-Context
-Round creation paths (manual and scheduler) do not guard against overlapping active rounds. This can create ambiguous active state and inconsistent client behavior.
-
-What Needs to Happen
-- Enforce active-round guard by mode (or globally, per product rule).
-- Add conflict response (for example `409`) from API layer.
-- Ensure scheduler respects existing active rounds.
-
-Files to Create/Modify
-- `src/services/round.service.ts`
-- `src/services/round-scheduler.service.ts`
-- `src/routes/rounds.routes.ts`
-- `src/tests/round.spec.ts`
-
-Acceptance Criteria
-- At most one active round per defined constraint.
-- Scheduler does not create overlapping active rounds.
-
-How to Validate
-- Start round, attempt second creation immediately, assert conflict.
-- Run scheduler simulation with existing active round.
-
-PR Requirements
-- PR title: `fix: enforce single active round constraint`
-- Include `Closes #[issue_id]` in PR description
-
-### #7 Add Idempotent State Transition Guards for Lock and Resolve Flows
-Context
-Lock/resolve operations run in loops and cron contexts. Without strict state transition guards and idempotency, repeated jobs can cause noisy failures and inconsistent side effects.
-
-What Needs to Happen
-- Make `lockRound` and `resolveRound` state transitions conditional and idempotent.
-- Return explicit outcomes (`updated`, `already_locked`, `already_resolved`).
-- Add retry-safe scheduler behavior.
-
-Files to Create/Modify
-- `src/services/round.service.ts`
-- `src/services/resolution.service.ts`
-- `src/services/scheduler.service.ts`
-- `src/services/round-scheduler.service.ts`
-
-Acceptance Criteria
-- Re-running lock/resolve for same round is safe.
-- Schedulers do not emit false errors on already-processed rounds.
-
-How to Validate
-- Trigger same operation twice and verify second pass is no-op.
-- Run auto-resolve job repeatedly with same dataset.
-
-PR Requirements
-- PR title: `fix: make round lifecycle transitions idempotent`
-- Include `Closes #[issue_id]` in PR description
-
-### #8 Add `resolvedAt` Timestamp Support and Response Consistency
-Context
-Round resolve responses reference `resolvedAt`, but schema currently has no such field, producing undefined data and inconsistent API contracts.
-
-What Needs to Happen
-- Add `resolvedAt` to Prisma `Round` model via migration.
-- Populate it during resolution.
-- Ensure API docs and response payloads are aligned.
-
-Files to Create/Modify
-- `prisma/schema.prisma`
-- `prisma/migrations/` (new migration)
-- `src/services/resolution.service.ts`
-- `src/routes/rounds.routes.ts`
-
-Acceptance Criteria
-- Resolved rounds always include non-null `resolvedAt`.
-- API response schema matches runtime output.
-
-How to Validate
-- Run `npm run prisma:migrate`.
-- Resolve a round and verify `resolvedAt` persisted and returned.
-
-PR Requirements
-- PR title: `feat: persist resolvedAt for rounds`
-- Include `Closes #[issue_id]` in PR description
-
-### #9 Make Challenge Verification and Consumption Atomic
-Context
-Auth challenge lookup and `isUsed` update occur in separate operations, leaving a race window where the same challenge could be consumed by concurrent requests.
-
-What Needs to Happen
-- Use transaction or conditional update (`updateMany` with `isUsed=false`) to consume challenge atomically.
-- Ensure only one request can successfully consume each challenge.
-- Add concurrent auth tests.
-
-Files to Create/Modify
-- `src/routes/auth.routes.ts`
-- `src/tests/` (new auth route race tests)
-
-Acceptance Criteria
-- Challenge replay via concurrent requests is prevented.
-- Exactly one request succeeds for a single challenge.
-
-How to Validate
-- Run parallel connect requests with same challenge and signature.
-- Assert one success, one auth failure.
-
-PR Requirements
-- PR title: `security: atomically consume auth challenges`
-- Include `Closes #[issue_id]` in PR description
-
-### #10 Enforce Required JWT Secret and Strong Startup Validation
-Context
-JWT utility falls back to a weak default secret when env var is missing, creating a critical production risk.
-
-What Needs to Happen
-- Remove insecure default JWT secret fallback.
-- Add startup config validation for required env vars.
-- Fail fast with clear error messages.
-
-Files to Create/Modify
-- `src/utils/jwt.util.ts`
-- `src/index.ts`
-- `README.md` (env requirements)
-
-Acceptance Criteria
-- App refuses startup without `JWT_SECRET`.
-- No hardcoded fallback secret remains.
-
-How to Validate
-- Start app without `JWT_SECRET`; verify startup fails clearly.
-- Start with valid secret; verify normal auth flows.
-
-PR Requirements
-- PR title: `security: require explicit jwt secret configuration`
-- Include `Closes #[issue_id]` in PR description
-
-### #11 Replace `console.*` Logging with Structured Logger Everywhere
-Context
-Codebase mixes `console.log/error/warn` with Winston logger, reducing observability consistency and log parsing quality.
-
-What Needs to Happen
-- Replace console statements with `logger` utility.
-- Standardize log fields and context objects.
-- Ensure production-friendly log formatting.
-
-Files to Create/Modify
-- `src/services/oracle.ts`
-- `src/routes/auth.routes.ts`
-- `src/routes/user.routes.ts`
-- `src/routes/education.routes.ts`
-- `src/services/*` (as needed)
-
-Acceptance Criteria
-- No direct `console.*` usage in runtime paths.
-- Logs are structured and consistent across modules.
-
-How to Validate
-- Grep for `console.` and confirm runtime files are clean.
-- Run app and verify consistent logger output.
-
-PR Requirements
-- PR title: `chore: standardize structured logging across backend`
-- Include `Closes #[issue_id]` in PR description
-
-### #12 Add Lifecycle Control for Oracle Polling and Price Broadcast Interval
-Context
-Oracle polling and price emit intervals are started without stop handles. In tests/restarts this can create duplicate timers and noisy behavior.
-
-What Needs to Happen
-- Return and manage interval handles for polling and broadcast loops.
-- Add `start/stop` semantics to prevent duplicate starts.
-- Use lifecycle hooks from app bootstrap.
-
-Files to Create/Modify
-- `src/services/oracle.ts`
-- `src/index.ts`
-- `src/tests/` (new timer lifecycle tests)
-
-Acceptance Criteria
-- Polling and emit loops can be started once and stopped cleanly.
-- No duplicate interval activity after restart in process.
-
-How to Validate
-- Run lifecycle tests with fake timers.
-- Manual restart scenario confirms single active loop.
-
-PR Requirements
-- PR title: `fix: add start-stop lifecycle for oracle and price broadcast`
-- Include `Closes #[issue_id]` in PR description
-
-### #13 Expand Rate Limiting to Critical Write Endpoints
-Context
-Rate limiting is strong on auth/chat but missing on several write-heavy endpoints such as prediction submission and round operations, increasing abuse/DoS risk.
-
-What Needs to Happen
-- Add per-user and per-IP rate limits for high-risk mutation routes.
-- Add separate stricter policies for admin/oracle actions.
-- Document limits in OpenAPI.
-
-Files to Create/Modify
-- `src/middleware/rateLimiter.middleware.ts`
-- `src/routes/predictions.routes.ts`
-- `src/routes/rounds.routes.ts`
-- `src/docs/openapi.ts`
-
-Acceptance Criteria
-- Abuse-prone endpoints are rate-limited with tailored policies.
-- OpenAPI docs reflect 429 behavior for affected routes.
-
-How to Validate
-- Hit endpoints in burst and verify `429` responses.
-- Confirm normal usage remains unaffected.
-
-PR Requirements
-- PR title: `security: add rate limits for mutation endpoints`
-- Include `Closes #[issue_id]` in PR description
-
-### #14 Harden Oracle Integration with Timeouts, Retries, and Staleness Checks
-Context
-Price oracle currently fetches from one source with minimal resilience. Failures keep stale values silently and there is no explicit freshness metadata on served price.
-
-What Needs to Happen
-- Add request timeout and retry/backoff.
-- Track `lastUpdatedAt` and expose staleness in API.
-- Define behavior when data is stale (for example block round creation/resolution).
-
-Files to Create/Modify
-- `src/services/oracle.ts`
-- `src/index.ts` (price endpoint)
-- `src/services/round-scheduler.service.ts`
-- `src/services/scheduler.service.ts`
-
-Acceptance Criteria
-- Oracle fetch behavior is resilient to transient failures.
-- API exposes freshness metadata.
-- Scheduler decisions include staleness safeguards.
-
-How to Validate
-- Simulate API failures/timeouts and verify retries + stale handling.
-- Confirm round creation/resolution behavior follows policy.
-
-PR Requirements
-- PR title: `feat: add resilient oracle fetching and freshness safeguards`
-- Include `Closes #[issue_id]` in PR description
-
-### #15 Integrate Real Soroban Bindings and Remove Placeholder Client
-Context
-`src/services/soroban.service.ts` currently defines `Client` as `undefined as any`, while runtime methods depend on it. This can break critical blockchain flows silently at runtime.
-
-What Needs to Happen
-- Properly import and initialize client from `@tevalabs/xelma-bindings`.
-- Add typed request/response handling and robust error mapping.
-- Add integration tests/mocks for create/place/resolve flows.
-
-Files to Create/Modify
-- `src/services/soroban.service.ts`
-- `src/types/xelma-bindings.d.ts` (if still needed)
-- `src/tests/` (new soroban service tests)
-
-Acceptance Criteria
-- Soroban client initialization is fully functional and typed.
-- No placeholder `undefined as any` client code remains.
-- Core blockchain calls are covered by tests.
-
-How to Validate
-- Run targeted Soroban service tests.
-- Perform manual test flow: create round, place bet, resolve.
-
-PR Requirements
-- PR title: `fix: wire real soroban bindings client with typed integration`
-- Include `Closes #[issue_id]` in PR description
-
-### #16 Synchronize README and OpenAPI with Actual Implemented Endpoints
-Context
-Current README route tables include outdated paths and endpoint names that do not match implemented routes (for example auth, chat, education, rounds).
-
-What Needs to Happen
-- Reconcile README endpoint sections with route files.
-- Ensure OpenAPI examples and operation summaries match real behavior.
-- Add a lightweight docs verification checklist.
-
-Files to Create/Modify
-- `README.md`
-- `src/docs/openapi.ts`
-- `docs/openapi.json` (regenerated)
-- `docs/postman-collection.json` (regenerated)
-
-Acceptance Criteria
-- No stale endpoint names or paths in docs.
-- Generated docs reflect current API contract.
-
-How to Validate
-- Run `npm run docs:openapi` and `npm run docs:postman`.
-- Spot-check a sample of endpoints from docs against running server.
-
-PR Requirements
-- PR title: `docs: align readme and openapi with implemented routes`
-- Include `Closes #[issue_id]` in PR description
-
-### #17 Introduce Request Schema Validation Layer for All Routes
-Context
-Input validation is currently ad hoc and duplicated in routes, increasing inconsistency and missed edge cases.
-
-What Needs to Happen
-- Add a shared validation layer (for example Zod/Joi).
-- Define schemas for auth, rounds, predictions, chat, and pagination query params.
-- Standardize validation error shape.
-
-Files to Create/Modify
-- `src/middleware/` (new validation middleware)
-- `src/routes/auth.routes.ts`
-- `src/routes/rounds.routes.ts`
-- `src/routes/predictions.routes.ts`
-- `src/routes/chat.routes.ts`
-
-Acceptance Criteria
-- Major routes use centralized schema validation.
-- Validation errors are consistent and documented.
-
-How to Validate
-- Add route tests for invalid payloads/types.
-- Run `npm test`.
-
-PR Requirements
-- PR title: `refactor: add centralized request schema validation`
-- Include `Closes #[issue_id]` in PR description
-
-### #18 Add Coverage for Auth, Prediction, Notification, and Socket Flows
-Context
-Current tests focus mainly on education and round service. Core auth, prediction, notification, and WebSocket paths lack meaningful automated coverage.
-
-What Needs to Happen
-- Add unit and route tests for auth challenge/connect and JWT guards.
-- Add prediction route/service tests for success and failures.
-- Add notification route/service tests including ownership checks.
-- Add Socket.IO auth and room event tests.
-
-Files to Create/Modify
-- `src/tests/auth.routes.spec.ts` (new)
-- `src/tests/prediction.service.spec.ts` (new)
-- `src/tests/notifications.routes.spec.ts` (new)
-- `src/tests/socket.spec.ts` (new)
-
-Acceptance Criteria
-- Core user-critical flows are covered by automated tests.
-- Regression risk for auth/prediction/socket paths is reduced.
-
-How to Validate
-- Run `npm test`.
-- Confirm new suites pass consistently in CI/local.
-
-PR Requirements
-- PR title: `test: expand coverage for auth prediction notifications and sockets`
-- Include `Closes #[issue_id]` in PR description
-
-### #19 Add Scheduler Integration Tests with Fake Timers and DB Fixtures
-Context
-Cron-driven behavior is difficult to reason about and currently under-tested. Round locking/resolution logic should be verified in time-driven scenarios.
-
-What Needs to Happen
-- Add scheduler tests using fake timers.
-- Cover auto-lock and auto-resolve decision logic.
-- Verify no duplicate processing and proper status transitions.
-
-Files to Create/Modify
-- `src/tests/scheduler.service.spec.ts` (new)
-- `src/tests/round-scheduler.service.spec.ts` (new)
-- `src/services/scheduler.service.ts` (small testability hooks)
-- `src/services/round-scheduler.service.ts` (small testability hooks)
-
-Acceptance Criteria
-- Scheduler behavior is deterministic under test.
-- Time-based lifecycle transitions are covered.
-
-How to Validate
-- Run targeted scheduler tests and full `npm test`.
-
-PR Requirements
-- PR title: `test: add deterministic coverage for cron schedulers`
-- Include `Closes #[issue_id]` in PR description
-
-### #20 Migrate Monetary Fields from Float to Decimal-Safe Representation
-Context
-Balances, pools, and payouts currently rely on `Float` values in Prisma/models, which can introduce rounding drift in financial calculations.
-
-What Needs to Happen
-- Migrate monetary fields to `Decimal` (or integer minor units) in Prisma schema.
-- Update service calculations and serialization.
-- Add tests to verify deterministic payout math.
-
-Files to Create/Modify
-- `prisma/schema.prisma`
-- `prisma/migrations/` (new migration)
-- `src/services/prediction.service.ts`
-- `src/services/resolution.service.ts`
-- `src/services/leaderboard.service.ts`
-- `src/tests/` (new monetary precision tests)
-
-Acceptance Criteria
-- No float precision anomalies in balance/payout flows.
-- Monetary calculations are deterministic across environments.
-
-How to Validate
-- Run migration and targeted payout tests with fractional edge cases.
-- Verify balances reconcile after multi-round simulation.
-
-PR Requirements
-- PR title: `refactor: move monetary math to decimal-safe types`
-- Include `Closes #[issue_id]` in PR description
 
 ---
 
@@ -2255,19 +1614,17 @@ Required env vars:
 
 This section is designed so a new developer can boot and test the API in minutes.
 
-The hackathon entrypoint now exposes the production-style user, bet, and tournament routes under /api/user, /api/bets, and /api/tournaments so frontend integrations can use a single dev command.
-
-### 1. Setup
+### Setup
 
 ```bash
 git clone https://github.com/TevaLabs/Xelma-Backend.git
 cd Xelma-Backend
 npm install
 
-# 1. Start the PostgreSQL database container (if not running a local instance)
+# 1. Start PostgreSQL (if not running a local instance)
 docker compose up -d postgres
 
-# 2. Copy and customize your environment variables
+# 2. Copy and customize environment variables
 cp .env.hackathon.example .env
 # Edit .env â†’ set DATABASE_URL and JWT_SECRET
 
@@ -2284,9 +1641,9 @@ npm run db:seed:tournaments
 npm run dev
 ```
 
-The server starts on `http://localhost:3001` (or the `PORT` in `.env`).
+The server starts on `http://localhost:3001` (or the `PORT` in `.env`). See the [API Documentation](#api-documentation) section above for endpoint examples.
 
-### 2. Required Environment Variables
+### Required Environment Variables
 
 | Variable | Example | Purpose |
 |---|---|---|
@@ -2544,7 +1901,7 @@ one remaining Drizzle consumer was less total work than maintaining the split.
 
 ## Hackathon API Rate Limits
 
-The lightweight hackathon server (`src/app.ts`, default port **3001**) applies per-IP throttling with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) via `src/middleware/rateLimiter.ts`.
+The lightweight hackathon server (default port **3001**) applies per-IP throttling with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit).
 
 | Limiter | Scope | Window | Max requests |
 | --- | --- | --- | --- |
@@ -2563,64 +1920,6 @@ When a client exceeds a limit, the API returns **429** with retry guidance:
 ```
 
 The `RateLimit-*` and `Retry-After` response headers are also set (`standardHeaders: true`).
-
----
-
-## Incident Response Runbook & Alert Configuration
-
-This section provides operational guidance for backend system administrators monitoring rate-limiting telemetry.
-
-### 1. Telemetry Overview
-We track rate-limit occurrences using the Prometheus counter `http_rate_limit_hits_total`, which includes the following sub-labels:
-- `endpoint`: The specific API path that was throttled (e.g., `auth/challenge`, `prediction/submit`).
-- `method`: The HTTP request method (e.g., `POST`, `GET`).
-
-### 2. Monitoring & Scraping Endpoints
-Operators can access the telemetry data via the following endpoints:
-- **Prometheus Scrape Path**: `GET /api/admin/metrics/metrics`  
-  Returns the flat-text Prometheus exposition format for all registered metrics (including `http_rate_limit_hits_total`).
-- **Admin JSON Summary**: `GET /api/admin/metrics/rate-limit-summary`  
-  Returns an optimized JSON configuration payload detailing active counter maps. Gated by admin authentication.
-
-### 3. Recommended Alerting Rules
-Configure your Prometheus/Alertmanager or Grafana alerts with the following recommended thresholds:
-
-| Alert Name | PromQL Expression | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `HighRateLimitHitsWarning` | `sum(rate(http_rate_limit_hits_total[5m])) by (endpoint) > 0.5` | Warning | Rate of 429 hits exceeds 30 per minute on any endpoint. Indicates potential client misbehavior or mild scraping. |
-| `HighRateLimitHitsCritical` | `sum(rate(http_rate_limit_hits_total[5m])) by (endpoint) > 5.0` | Critical | Rate of 429 hits exceeds 300 per minute. Indicates a potential brute-force or DDoS attack. |
-
-### 4. Triage & Incident Response Steps
-
-When an alert triggers, follow these steps to investigate and resolve the issue:
-
-#### Step 1: Identify the Target & Scale
-Query the active counter maps using the admin summary endpoint or Grafana dashboard:
-```bash
-curl -H "Authorization: Bearer <ADMIN_JWT>" http://localhost:3000/api/admin/metrics/rate-limit-summary
-```
-Identify:
-1. Which **endpoints** are experiencing the highest rate of 429s.
-2. The **volume** of hits (spikes vs. sustained rate).
-
-#### Step 2: Correlate with Database Metrics
-Query the database-backed rate-limit logs to identify the offending IP addresses and/or user IDs:
-```bash
-curl -H "Authorization: Bearer <ADMIN_JWT>" http://localhost:3000/api/admin/metrics/rate-limits?limit=50
-```
-Analyze the `topAbusers` and `flaggedActors` fields to pinpoint the source of the traffic.
-
-#### Step 3: Determine the Nature of the Traffic
-- **Organic Spike**: If the hits are distributed across many different IPs and correspond to a high-profile prediction event or round resolution, it is likely organic. Consider temporarily raising the rate limit thresholds (e.g. via environment variables `BATCH_PREDICTION_RATE_LIMIT_MAX`).
-- **Malicious/Abusive**: If a single IP or user account is responsible for a disproportionate number of hits, treat it as an abuse incident.
-
-#### Step 4: Mitigation Actions
-- **IP Blocking**: If the traffic is malicious and coming from a small set of IPs, block them at the cloud firewall/load balancer level (e.g., Cloudflare, AWS WAF, Render header rules) before they reach the backend.
-- **Tune Limits**: If legitimate users are getting throttled, adjust the rate limit configuration in the environment variables:
-  - `BATCH_PREDICTION_RATE_LIMIT_MAX`
-  - `BATCH_PREDICTION_RATE_LIMIT_WINDOW_MS`
-  - `RATE_LIMIT_SUSPICIOUS_HIT_THRESHOLD`
-  Restart the service to apply changes.
 
 ---
 
