@@ -1,4 +1,4 @@
-import type { Express, Application } from "express";
+﻿import type { Express, Application } from "express";
 
 export type AppEntrypoint = "main" | "hackathon";
 
@@ -29,6 +29,14 @@ export const VERSIONED_ALIAS_ALLOWLIST: string[] = [
   "GET /prices",
 ];
 
+/**
+ * Intentional cross-app route differences between the production (`index.ts`)
+ * and hackathon (`app.ts`) entrypoints.
+ *
+ * Shared mounts (auth challenge/connect/verify, user, bets, tournaments, chat,
+ * notifications, leaderboard GET, metrics, docs, and `/api/prices`) must NOT
+ * appear here — they exist in both apps.
+ */
 export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   // --- rootBanner ---
   { method: "GET", path: "/", only: "main", reason: "Root welcome banner is production-only.", flag: "rootBanner" },
@@ -40,9 +48,8 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api/health", only: "hackathon", reason: "Hackathon app serves the lightweight health check under /api.", flag: "mode: health mount" },
 
   // --- auth ---
-  { method: "POST", path: "/api/auth/challenge", only: "main", reason: "Wallet auth flow is not part of the mock demo.", flag: "auth" },
-  { method: "POST", path: "/api/auth/connect", only: "main", reason: "Wallet auth flow is not part of the mock demo.", flag: "auth" },
-  { method: "POST", path: "/api/auth/verify", only: "main", reason: "Wallet auth flow is not part of the mock demo.", flag: "auth" },
+  // Shared: both modes mount wallet challenge/connect/verify (#400). Do not
+  // allowlist these routes — they exist in both apps.
 
   // --- predictions ---
   { method: "POST", path: "/api/predictions/submit", only: "main", reason: "Prediction submission requires a database and authenticated user.", flag: "predictions" },

@@ -144,12 +144,12 @@ const FULL_FEATURES: AppFeatures = {
 /**
  * Hackathon mock/demo app (`npm run dev:hackathon`, `src/app.ts`).
  *
- * No database, no wallet auth, no admin surface. Rate limiting is applied
- * globally instead of per-route because the demo has no authenticated
- * identity to attribute quota to.
+ * Wallet auth is shared with the full app so clients can obtain JWTs without
+ * switching servers (#400). No predictions/education/admin surface. Rate
+ * limiting is applied globally instead of per-route.
  */
 const HACKATHON_FEATURES: AppFeatures = {
-  auth: false,
+  auth: true,
   predictions: false,
   education: false,
   errorCatalog: false,

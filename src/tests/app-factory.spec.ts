@@ -64,7 +64,7 @@ describe("app factory", () => {
     it("disables full-only surfaces in hackathon mode", () => {
       const features = resolveFeatures("hackathon");
 
-      expect(features.auth).toBe(false);
+      expect(features.auth).toBe(true);
       expect(features.predictions).toBe(false);
       expect(features.education).toBe(false);
       expect(features.adminRoutes).toBe(false);
@@ -75,7 +75,7 @@ describe("app factory", () => {
     });
 
     it("lets an explicit override win over the mode default", () => {
-      expect(resolveFeatures("hackathon", { auth: true }).auth).toBe(true);
+      expect(resolveFeatures("hackathon", { auth: false }).auth).toBe(false);
       expect(resolveFeatures("full", { adminRoutes: false }).adminRoutes).toBe(false);
     });
   });
@@ -88,12 +88,12 @@ describe("app factory", () => {
       expect(routes.has("GET /api/user/profile")).toBe(true);
     });
 
-    it("adds auth routes to the hackathon app when auth is forced on", () => {
-      const routes = pathsOf(
-        createApp({ mode: "hackathon", features: { auth: true } }),
-      );
+    it("includes auth routes on the hackathon app by default", () => {
+      const routes = pathsOf(createApp({ mode: "hackathon" }));
 
       expect(routes.has("POST /api/auth/challenge")).toBe(true);
+      expect(routes.has("POST /api/auth/connect")).toBe(true);
+      expect(routes.has("POST /api/auth/verify")).toBe(true);
     });
 
     it("omits every admin surface when adminRoutes is off", () => {
@@ -194,6 +194,9 @@ describe("app factory", () => {
     const hackathon = pathsOf(createApp({ mode: "hackathon" }));
 
     it.each([
+      "POST /api/auth/challenge",
+      "POST /api/auth/connect",
+      "POST /api/auth/verify",
       "GET /api/user/profile",
       "GET /api/prices",
       "POST /api/bets/up-down",
