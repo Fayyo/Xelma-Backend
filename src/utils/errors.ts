@@ -106,6 +106,23 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+/**
+ * 503 – in-flight cap exceeded on a money/RPC path.
+ * Distinct from a generic upstream failure so the error handler can set Retry-After.
+ */
+export class BackpressureError extends ExternalServiceError {
+  readonly retryAfterSeconds: number;
+
+  constructor(
+    message = "Too many in-flight money-path operations. Please retry shortly.",
+    retryAfterSeconds = 1,
+  ) {
+    super(message, ErrorCode.EXTERNAL_SERVICE_ERROR);
+    this.name = "BackpressureError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 /** 500 – misconfiguration detected at runtime */
 export class ConfigurationError extends AppError {
   constructor(message: string, code: ErrorCode | string = ErrorCode.CONFIGURATION_ERROR) {
@@ -329,6 +346,13 @@ export function mapSorobanError(errorMsg: string | undefined): AppError {
   if (msg.includes("timeout")) {
     return new ExternalServiceError(
       "Contract operation timed out.",
+      ErrorCode.EXTERNAL_SERVICE_ERROR
+    );
+  }
+
+  if (msg.includes("circuit breaker")) {
+    return new ExternalServiceError(
+      "Contract service temporarily unavailable. Please retry shortly.",
       ErrorCode.EXTERNAL_SERVICE_ERROR
     );
   }

@@ -5,7 +5,7 @@ import simulationService from '../services/simulation.service';
 import { requireAdmin, requireOracle, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/errorHandler.middleware';
 import { toDecimal, toDecimalString } from '../utils/decimal.util';
-import { adminRoundRateLimiter, oracleResolveRateLimiter } from '../middleware/rateLimiter.middleware';
+import { adminRoundRateLimiter, betRateLimiter, oracleResolveRateLimiter } from '../middleware/rateLimiter.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { sendSuccess } from '../utils/response';
 import { startRoundSchema, resolveRoundSchema } from '../schemas/rounds.schema';

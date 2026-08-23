@@ -1,4 +1,4 @@
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 import { Request } from 'express';
 import { rateLimitMetricsService, RateLimitMetricsService } from '../services/rate-limit-metrics.service';
 import { getRateLimitCategory } from '../security/rate-limit-endpoints';
@@ -17,27 +17,31 @@ type RateLimitPolicy = {
   message: string;
 };
 
-/** Documented limits for operators, tests, and README */
+/** Documented limits for operators, tests, and README. Demo defaults; override via env. */
 export const RATE_LIMIT_POLICIES = {
   api: {
-    windowMs: 60 * 1000,
-    max: 100,
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_API_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_API_MAX, 100),
     message:
       'Too many requests from this IP. Please slow down and try again shortly.',
   },
   write: {
-    windowMs: 60 * 1000,
-    max: 20,
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_WRITE_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_WRITE_MAX, 20),
     message:
       'Too many write requests from this IP. Please wait before submitting again.',
   },
   bet: {
-    windowMs: 60 * 1000,
-    max: 5,
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_BET_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_BET_MAX, 5),
     message:
       'Too many bet submissions from this IP. Please wait before placing another bet.',
   },
-  predictionSubmit: { windowMs: 60 * 1000, max: 10, name: 'prediction/submit' },
+  predictionSubmit: {
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_PREDICTION_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_PREDICTION_MAX, 10),
+    name: 'prediction/submit',
+  },
   predictionBatchSubmit: {
     windowMs: parsePositiveInt(process.env.BATCH_PREDICTION_RATE_LIMIT_WINDOW_MS, 60 * 1000),
     max: parsePositiveInt(process.env.BATCH_PREDICTION_RATE_LIMIT_MAX, 3),
@@ -64,7 +68,11 @@ function createRateLimiter(opts: {
   return rateLimit({
     windowMs: opts.windowMs,
     max: opts.max,
-    keyGenerator: opts.keyGenerator ?? (ipKeyGenerator as (req: any) => string),
+    // Do not pass `ipKeyGenerator` as keyGenerator: that helper takes an IP
+    // string, not a Request. Using it as a keyGenerator stores the request
+    // object as the Map key, so every request looks unique and never 429s.
+    // Omit keyGenerator to use express-rate-limit's default (IP + IPv6 subnet).
+    ...(opts.keyGenerator ? { keyGenerator: opts.keyGenerator } : {}),
     message: { error: 'Too Many Requests', message: opts.message, retryAfter: Math.ceil(opts.windowMs / 1000) },
     standardHeaders: true,
     legacyHeaders: false,

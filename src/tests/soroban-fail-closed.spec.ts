@@ -28,6 +28,9 @@ describe("SOROBAN_FAIL_CLOSED config (#401)", () => {
     jest.resetModules();
     const config = (await import("../config")).default;
     expect(config.soroban.failClosed).toBe(false);
+    expect(config.soroban.breakerFailureThreshold).toBe(3);
+    expect(config.soroban.breakerOpenBackoffMs).toBe(30_000);
+    expect(config.soroban.moneyPathMaxInFlight).toBe(8);
   });
 
   it("parses fail-closed when SOROBAN_FAIL_CLOSED=true", async () => {

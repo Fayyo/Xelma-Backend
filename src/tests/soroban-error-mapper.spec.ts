@@ -35,6 +35,17 @@ describe("mapSorobanError", () => {
     expect(error.message).toBe("Contract operation timed out.");
   });
 
+  it("maps circuit-breaker messages to a safe 503", () => {
+    const error = mapSorobanError(
+      'Circuit breaker "soroban-rpc" is open until 2026-08-23T00:00:00.000Z',
+    );
+    expect(error).toBeInstanceOf(ExternalServiceError);
+    expect(error.code).toBe(ErrorCode.EXTERNAL_SERVICE_ERROR);
+    expect(error.message).toBe(
+      "Contract service temporarily unavailable. Please retry shortly.",
+    );
+  });
+
   it("maps unknown errors to generic EXTERNAL_SERVICE_ERROR without leaking details", () => {
     const rawError = "Some obscure underlying ledger tx failure code 1234";
     const error = mapSorobanError(rawError);

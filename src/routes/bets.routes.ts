@@ -6,6 +6,7 @@ import {
   requireAdmin,
   AuthenticatedRequest,
 } from "../middleware/auth.middleware";
+import { betRateLimiter } from "../middleware/rateLimiter.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
 import { BetStatus } from "../data/bet-store";
@@ -58,6 +59,8 @@ const router = Router();
 router.post(
   "/up-down",
   verifyStellarAuth,
+  bindAuthenticatedWallet,
+  betRateLimiter,
   validate(upDownBetSchema),
   (async (req: any, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
@@ -141,10 +144,7 @@ router.post(
         ));
       }
 
-      if (error?.message?.includes("Circuit breaker")) {
-        throw new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR);
-      }
-      throw error;
+      return next(error);
     }
   }),
 );
@@ -179,6 +179,8 @@ router.post(
 router.post(
   "/precision",
   verifyStellarAuth,
+  bindAuthenticatedWallet,
+  betRateLimiter,
   validate(precisionBetSchema),
   (async (req: any, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
@@ -255,9 +257,6 @@ router.post(
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
       }
 
-      if (error?.message?.includes("Circuit breaker")) {
-        return next(new ExternalServiceError("Contract interaction failed. Please try again.", ErrorCode.EXTERNAL_SERVICE_ERROR));
-      }
       next(error);
     }
   }) as any,
@@ -375,15 +374,7 @@ router.post(
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
       }
 
-      if (error?.message?.includes("Circuit breaker")) {
-        return next(
-          new ExternalServiceError(
-            "Contract interaction failed. Please try again.",
-            ErrorCode.EXTERNAL_SERVICE_ERROR
-          )
-        );
-      }
-      throw error;
+      return next(error);
     }
   }),
 );
