@@ -53,5 +53,19 @@ export const sharedComponents = {
       },
       required: ['error', 'message', 'code'],
     },
+    MoneyAmount: {
+      type: 'string',
+      description:
+        'Canonical monetary amount: a Decimal(20,8) serialized as a string with exactly 8 fractional digits. Never a JSON number — IEEE-754 floats cannot represent stroop-scale values safely.',
+      pattern: '^-?\\d+\\.\\d{8}$',
+      example: '1000.33333333',
+    },
+    NullableMoneyAmount: {
+      type: 'string',
+      nullable: true,
+      description: 'Optional monetary amount. Null when the value is unset (e.g. unresolved payout or end price).',
+      pattern: '^-?\\d+\\.\\d{8}$',
+      example: '15.50000000',
+    },
   },
 };

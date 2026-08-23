@@ -3,6 +3,8 @@ import { prisma } from "../lib/prisma";
 import { NotFoundError, ConflictError, ValidationError } from "../utils/errors";
 import { buildOffsetPage } from "../utils/pagination.util";
 import type { TournamentListQuery } from "../schemas/tournament.schema";
+import { serializeMoney } from "../utils/decimal.util";
+import { serializeTournament } from "../serializers/monetary.serializer";
 
 export interface TournamentListItem {
   id: string;
@@ -121,8 +123,8 @@ function mapPrismaTournament(row: {
     description: row.description,
     mode: row.mode,
     status: row.status,
-    entryFee: row.entryFee.toString(),
-    prizePool: row.prizePool.toString(),
+    entryFee: serializeMoney(row.entryFee),
+    prizePool: serializeMoney(row.prizePool),
     maxParticipants: row.maxParticipants,
     currentParticipants: row.currentParticipants,
     startTime: row.startTime.toISOString(),
@@ -156,7 +158,7 @@ export class TournamentService {
     const { limit, offset, mode, status } = query;
     const filtered = filterTournaments(MOCK_TOURNAMENTS, { mode, status });
     const total = filtered.length;
-    const page = filtered.slice(offset, offset + limit);
+    const page = filtered.slice(offset, offset + limit).map((item) => serializeTournament(item));
     return buildOffsetPage(page, limit, offset, total);
   }
 
@@ -185,7 +187,8 @@ export class TournamentService {
   }
 
   getMockById(id: string): TournamentListItem | undefined {
-    return MOCK_TOURNAMENTS.find((t) => t.id === id);
+    const item = MOCK_TOURNAMENTS.find((t) => t.id === id);
+    return item ? serializeTournament(item) : undefined;
   }
 
   async joinTournament(

@@ -113,16 +113,75 @@ export const swaggerSpec = swaggerJSDoc({
           additionalProperties: false,
         },
 
+        LeaderboardEntry: {
+          type: 'object',
+          properties: {
+            rank: { type: 'integer' },
+            userId: { type: 'string' },
+            walletAddress: { type: 'string' },
+            totalEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            totalPredictions: { type: 'integer' },
+            accuracy: { type: 'number' },
+            modeStats: {
+              type: 'object',
+              properties: {
+                upDown: {
+                  type: 'object',
+                  properties: {
+                    wins: { type: 'integer' },
+                    losses: { type: 'integer' },
+                    earnings: { $ref: '#/components/schemas/MoneyAmount' },
+                    accuracy: { type: 'number' },
+                  },
+                },
+                legends: {
+                  type: 'object',
+                  properties: {
+                    wins: { type: 'integer' },
+                    losses: { type: 'integer' },
+                    earnings: { $ref: '#/components/schemas/MoneyAmount' },
+                    accuracy: { type: 'number' },
+                  },
+                },
+              },
+            },
+          },
+        },
         LeaderboardResponse: {
           type: 'object',
           properties: {
-            leaderboard: { type: 'array', items: { type: 'object' } },
-            userPosition: { type: 'object', nullable: true },
+            leaderboard: { type: 'array', items: { $ref: '#/components/schemas/LeaderboardEntry' } },
+            userPosition: { $ref: '#/components/schemas/LeaderboardEntry', nullable: true },
             totalUsers: { type: 'number' },
             lastUpdated: { type: 'string' },
           },
           required: ['leaderboard', 'totalUsers', 'lastUpdated'],
           additionalProperties: true,
+        },
+        UserBalanceResponse: {
+          type: 'object',
+          properties: {
+            balance: { $ref: '#/components/schemas/MoneyAmount' },
+          },
+          required: ['balance'],
+        },
+        UserStatsResponse: {
+          type: 'object',
+          properties: {
+            totalPredictions: { type: 'integer' },
+            correctPredictions: { type: 'integer' },
+            totalEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            upDownEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            legendsEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            pendingWinnings: { $ref: '#/components/schemas/MoneyAmount' },
+          },
+        },
+        PredictionResponse: {
+          type: 'object',
+          properties: {
+            amount: { $ref: '#/components/schemas/MoneyAmount' },
+            payout: { $ref: '#/components/schemas/NullableMoneyAmount' },
+          },
         },
 
         RoundResponse: {
@@ -131,13 +190,13 @@ export const swaggerSpec = swaggerJSDoc({
             id: { type: 'string' },
             mode: { type: 'string', enum: ['UP_DOWN', 'LEGENDS'] },
             status: { type: 'string', enum: ['PENDING', 'ACTIVE', 'LOCKED', 'RESOLVED', 'CANCELLED'] },
-            startPrice: { type: 'string', description: 'Decimal string' },
-            endPrice: { type: 'string', nullable: true, description: 'Decimal string (set on resolution)' },
+            startPrice: { $ref: '#/components/schemas/MoneyAmount' },
+            endPrice: { allOf: [{ $ref: '#/components/schemas/NullableMoneyAmount' }], description: 'Decimal string (set on resolution)' },
             startTime: { type: 'string', format: 'date-time' },
             endTime: { type: 'string', format: 'date-time' },
             resolvedAt: { type: 'string', format: 'date-time', nullable: true, description: 'Timestamp of resolution' },
-            poolUp: { type: 'string', description: 'Decimal string' },
-            poolDown: { type: 'string', description: 'Decimal string' },
+            poolUp: { $ref: '#/components/schemas/MoneyAmount' },
+            poolDown: { $ref: '#/components/schemas/MoneyAmount' },
             sorobanRoundId: { type: 'string', nullable: true },
             priceRanges: {
               type: 'array',
@@ -155,7 +214,7 @@ export const swaggerSpec = swaggerJSDoc({
           properties: {
             min: { type: 'number', description: 'Inclusive lower bound of the range' },
             max: { type: 'number', description: 'Exclusive upper bound of the range (inclusive only for the final configured range)' },
-            pool: { type: 'number', description: 'Current total staked amount in this range', example: 125.5 },
+            pool: { $ref: '#/components/schemas/MoneyAmount' },
           },
           required: ['min', 'max'],
           additionalProperties: false,

@@ -23,9 +23,9 @@ describe("mapSorobanActiveRound", () => {
       sorobanRoundId: "42",
       mode: "UP_DOWN",
       status: "ACTIVE",
-      startPrice: 1.2345,
-      poolUp: 5,
-      poolDown: 2.5,
+      startPrice: "1.23450000",
+      poolUp: "5.00000000",
+      poolDown: "2.50000000",
       startLedger: 1000,
       betEndLedger: 1100,
       endLedger: 1200,
@@ -47,7 +47,7 @@ describe("mapSorobanActiveRound", () => {
     });
 
     expect(mapped.mode).toBe("LEGENDS");
-    expect(mapped.startPrice).toBe(1);
+    expect(mapped.startPrice).toBe("1.00000000");
   });
 });
 
@@ -72,8 +72,8 @@ describe("mapSorobanRoundToFrontendCards", () => {
     expect(liveCard?.asset).toBe("XLM");
     expect(liveCard?.source).toBe("live");
     expect(liveCard?.roundStatus).toBe("ACTIVE");
-    expect(liveCard?.priceData.startPrice).toBe(120);
-    expect(liveCard?.poolValues.upPool).toBe(2);
+    expect(liveCard?.priceData.startPrice).toBe("120.00000000");
+    expect(liveCard?.poolValues.upPool).toBe("2.00000000");
   });
 
   it("returns one live card and the rest mock cards for mixed output", () => {
@@ -117,7 +117,7 @@ describe("mapSorobanRoundToFrontendCards", () => {
         asset: expect.any(String),
         mode: expect.any(String),
         status: expect.any(String),
-        startPrice: expect.any(Number),
+        startPrice: expect.any(String),
         source: expect.any(String),
         roundStatus: expect.any(String),
         roundTiming: expect.objectContaining({
@@ -125,8 +125,8 @@ describe("mapSorobanRoundToFrontendCards", () => {
           endsAt: expect.any(String),
         }),
         priceData: expect.objectContaining({
-          startPrice: expect.any(Number),
-          currentPrice: expect.any(Number),
+          startPrice: expect.any(String),
+          currentPrice: expect.any(String),
         }),
         poolValues: expect.any(Object),
         predictionMetadata: expect.objectContaining({

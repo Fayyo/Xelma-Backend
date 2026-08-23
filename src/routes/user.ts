@@ -3,6 +3,8 @@ import { validateStellarAddressParam } from '../utils/stellar-address.util';
 import hackathonService from '../services/hackathon.service';
 import sorobanService from '../services/soroban.service';
 import logger from '../utils/logger';
+import { serializeMoney } from '../utils/decimal.util';
+import { serializeUserBalance } from '../serializers/monetary.serializer';
 import { sendSuccess } from '../utils/response';
 
 const router = Router();
@@ -84,14 +86,14 @@ function computeRankTitle(xp: number): string {
  *                     currentStreak:
  *                       type: integer
  *                     pendingWinnings:
- *                       type: string
+ *                       $ref: '#/components/schemas/MoneyAmount'
  *                     isRegistered:
  *                       type: boolean
  *                 profile:
  *                   type: object
  *                   properties:
  *                     balance:
- *                       type: number
+ *                       $ref: '#/components/schemas/MoneyAmount'
  *                     xp:
  *                       type: integer
  *                     rankTitle:
@@ -119,11 +121,11 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
 
       const xp = computeXp(contractStats.total_wins, contractStats.best_streak);
       // Convert pending winnings from stroops to XLM for the response
-      const pendingWinningsXlm = Number(pendingWinnings) / 10_000_000;
+      const pendingWinningsXlm = serializeMoney(Number(pendingWinnings) / 10_000_000);
 
       return sendSuccess(res, {
         address,
-        balance,
+        balance: serializeMoney(balance),
         pendingWinnings: pendingWinningsXlm,
         totalWins: contractStats.total_wins,
         totalLosses: contractStats.total_losses,
@@ -141,7 +143,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
     logger.info('Soroban unavailable — returning DB/mock stats', { address });
     const stats = await hackathonService.getUserStats(address);
 
-    return sendSuccess(res, {
+    return sendSuccess(res, serializeUserBalance({
       address: stats.address,
       balance: stats.balance,
       pendingWinnings: stats.pendingWinnings,
@@ -150,7 +152,7 @@ router.get('/:address/stats', validateStellarAddressParam('address'), async (req
       currentStreak: stats.currentStreak,
       xp: stats.xp,
       rankTitle: stats.rankTitle,
-    });
+    }));
   } catch (error) {
     next(error);
   }

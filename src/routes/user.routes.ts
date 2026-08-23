@@ -7,7 +7,13 @@ import { unifiedPaginationSchema, UnifiedPaginationParams, encodeCursor } from "
 import { NotFoundError } from "../utils/errors";
 import { validateStellarAddressParam } from "../utils/stellar-address.util";
 import sorobanService from "../services/soroban.service";
-import { toDecimalString } from "../utils/decimal.util";
+import { serializeMoney } from "../utils/decimal.util";
+import {
+  serializePrediction,
+  serializeTransaction,
+  serializeUserBalance,
+  serializeUserStats,
+} from "../serializers/monetary.serializer";
 import config from "../config";
 import { getMockBetHistory } from "../data/mockData";
 import { sendSuccess, sendError } from "../utils/response";
@@ -53,7 +59,7 @@ router.get(
         preferences: user.preferences,
         streak: user.streak,
         lastLoginAt: user.lastLoginAt,
-        balance: toDecimalString(user.virtualBalance),
+        balance: serializeMoney(user.virtualBalance),
       };
 
       return sendSuccess(res, { profile });
@@ -81,7 +87,7 @@ router.get(
 
       if (!user) return next(new NotFoundError("User not found"));
 
-      return sendSuccess(res, { balance: toDecimalString(user.virtualBalance) });
+      return sendSuccess(res, serializeUserBalance({ balance: user.virtualBalance }));
     } catch (error) {
       next(error);
     }
@@ -102,28 +108,28 @@ router.get("/stats", authenticateUser, (async (req: AuthenticatedRequest, res: R
 
     return sendSuccess(res, {
       stats: stats
-        ? {
+        ? serializeUserStats({
             totalPredictions: stats.totalPredictions,
             correctPredictions: stats.correctPredictions,
-            totalEarnings: toDecimalString(stats.totalEarnings),
+            totalEarnings: stats.totalEarnings,
             upDownWins: stats.upDownWins,
             upDownLosses: stats.upDownLosses,
-            upDownEarnings: toDecimalString(stats.upDownEarnings),
+            upDownEarnings: stats.upDownEarnings,
             legendsWins: stats.legendsWins,
             legendsLosses: stats.legendsLosses,
-            legendsEarnings: toDecimalString(stats.legendsEarnings),
-          }
-        : {
+            legendsEarnings: stats.legendsEarnings,
+          })
+        : serializeUserStats({
             totalPredictions: 0,
             correctPredictions: 0,
-            totalEarnings: "0",
+            totalEarnings: 0,
             upDownWins: 0,
             upDownLosses: 0,
-            upDownEarnings: "0",
+            upDownEarnings: 0,
             legendsWins: 0,
             legendsLosses: 0,
-            legendsEarnings: "0",
-          },
+            legendsEarnings: 0,
+          }),
     });
   } catch (error) {
     next(error);
@@ -179,11 +185,11 @@ router.get(
             totalLosses: 0,
             bestStreak: 0,
             currentStreak: 0,
-            pendingWinnings: "0",
-            isRegistered: false,
-          },
-          profile: {
-            balance: 0,
+          pendingWinnings: serializeMoney(0),
+          isRegistered: false,
+        },
+        profile: {
+          balance: serializeMoney(0),
             xp: 0,
             rankTitle: "Rookie",
           },
@@ -198,11 +204,11 @@ router.get(
           totalLosses: contractStats.total_losses,
           bestStreak: contractStats.best_streak,
           currentStreak: contractStats.current_streak,
-          pendingWinnings: pendingWinnings.toString(),
+          pendingWinnings: serializeMoney(pendingWinnings),
           isRegistered: contractStats.total_wins > 0 || contractStats.total_losses > 0,
         },
         profile: {
-          balance,
+          balance: serializeMoney(balance),
           xp,
           rankTitle: computeRankTitle(xp),
         },
@@ -273,10 +279,9 @@ router.get(
         prisma.transaction.count({ where: { userId } }),
       ]);
 
-      const serializedTransactions = transactions.map((tx: any) => ({
-        ...tx,
-        amount: toDecimalString(tx.amount),
-      }));
+      const serializedTransactions = transactions.map((tx: Record<string, unknown>) =>
+        serializeTransaction(tx),
+      );
 
       return sendSuccess(res, serializedTransactions, {
         pagination: {
@@ -424,18 +429,18 @@ router.get(
 
 /** Maps a raw Prisma prediction + round to the public API shape. */
 function mapPrediction(p: any) {
-  return {
+  return serializePrediction({
     roundId: p.roundId,
     asset: "XLM",
     mode: p.round.mode,
-    amount: toDecimalString(p.amount),
+    amount: p.amount,
     side: p.side,
     predictedPrice: p.priceRange,
     result: p.won === null ? "PENDING" : p.won ? "WIN" : "LOSS",
-    payout: p.payout !== null && p.payout !== undefined ? toDecimalString(p.payout) : null,
+    payout: p.payout,
     timestamp: p.createdAt,
     roundStatus: p.round.status,
-  };
+  });
 }
 
 /**

@@ -844,6 +844,13 @@ The backend provides auto-generated **OpenAPI/Swagger** documentation.
 - **Swagger UI**: [http://localhost:3000/api-docs](http://localhost:3000/api-docs)
 - **OpenAPI JSON**: [http://localhost:3000/api-docs.json](http://localhost:3000/api-docs.json)
 
+### Monetary field contract (breaking)
+
+Balances, stakes, payouts, pools, and tournament fees/prizes are **decimal
+strings** with 8 fractional digits (`"1000.33333333"`), never JSON numbers.
+See [docs/client-migration-money-strings.md](docs/client-migration-money-strings.md)
+for the frontend migration note.
+
 ### Authentication Endpoints
 
 #### Request Challenge

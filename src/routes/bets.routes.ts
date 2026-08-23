@@ -25,6 +25,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import { sendSuccess } from "../utils/response";
+import { serializeBet } from "../serializers/monetary.serializer";
 
 const router = Router();
 
@@ -448,7 +449,7 @@ router.get(
         success: true,
         summary: betService.getReconciliationSummary(),
         count: bets.length,
-        bets,
+        bets: bets.map((bet) => serializeBet(bet as unknown as Record<string, unknown>)),
       });
     } catch (error) {
       next(error);
@@ -491,7 +492,7 @@ router.get(
         throw new NotFoundError(`Bet ${req.params.id} not found`);
       }
 
-      res.json({ success: true, bet });
+      res.json({ success: true, bet: serializeBet(bet as unknown as Record<string, unknown>) });
     } catch (error) {
       next(error);
     }
