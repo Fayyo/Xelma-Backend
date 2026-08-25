@@ -3,6 +3,7 @@ import {
   serializeNullableMoney,
   type MoneyInput,
 } from "../utils/decimal.util";
+import type { RoundUpdatePayload } from "../types/socket-events";
 
 /** Field names that must never appear as JSON numbers in API payloads. */
 export const MONEY_FIELD_NAMES = new Set([
@@ -57,7 +58,7 @@ export function serializePriceRanges(ranges: unknown): unknown {
   });
 }
 
-export function serializePrediction<T extends Record<string, unknown>>(prediction: T): T {
+export function serializePrediction<T extends object>(prediction: T): T {
   const out = { ...prediction } as Record<string, unknown>;
   serializeExisting(out, "amount", false);
   serializeExisting(out, "payout", true);
@@ -69,7 +70,7 @@ export function serializePrediction<T extends Record<string, unknown>>(predictio
   return out as T;
 }
 
-export function serializeRound<T extends Record<string, unknown>>(round: T): T {
+export function serializeRound<T extends object>(round: T): T {
   const out = { ...round } as Record<string, unknown>;
 
   serializeExisting(out, "startPrice", false);
@@ -104,14 +105,14 @@ export function serializeRound<T extends Record<string, unknown>>(round: T): T {
   return out as T;
 }
 
-export function serializeUserBalance<T extends Record<string, unknown>>(payload: T): T {
+export function serializeUserBalance<T extends object>(payload: T): T {
   const out = { ...payload } as Record<string, unknown>;
   serializeExisting(out, "balance", false);
   serializeExisting(out, "pendingWinnings", false);
   return out as T;
 }
 
-export function serializeUserStats<T extends Record<string, unknown>>(stats: T): T {
+export function serializeUserStats<T extends object>(stats: T): T {
   const out = { ...stats } as Record<string, unknown>;
   serializeExisting(out, "totalEarnings", false);
   serializeExisting(out, "upDownEarnings", false);
@@ -120,13 +121,13 @@ export function serializeUserStats<T extends Record<string, unknown>>(stats: T):
   return out as T;
 }
 
-export function serializeTransaction<T extends Record<string, unknown>>(tx: T): T {
+export function serializeTransaction<T extends object>(tx: T): T {
   const out = { ...tx } as Record<string, unknown>;
   serializeExisting(out, "amount", false);
   return out as T;
 }
 
-export function serializeTournament<T extends Record<string, unknown>>(tournament: T): T {
+export function serializeTournament<T extends object>(tournament: T): T {
   const out = { ...tournament } as Record<string, unknown>;
   serializeExisting(out, "entryFee", false);
   serializeExisting(out, "prizePool", false);
@@ -135,34 +136,38 @@ export function serializeTournament<T extends Record<string, unknown>>(tournamen
   return out as T;
 }
 
-export function serializeBet<T extends Record<string, unknown>>(bet: T): T {
+export function serializeBet<T extends object>(bet: T): T {
   const out = { ...bet } as Record<string, unknown>;
   serializeExisting(out, "amount", false);
   return out as T;
 }
 
-export function serializeRoundUpdatePayload(round: Record<string, unknown>): Record<string, unknown> {
+export function serializeRoundUpdatePayload(round: Record<string, unknown>): RoundUpdatePayload {
+  const startTime =
+    typeof (round.startTime as { toISOString?: () => string })?.toISOString === "function"
+      ? (round.startTime as Date).toISOString()
+      : round.startTime;
+  const endTime =
+    typeof (round.endTime as { toISOString?: () => string })?.toISOString === "function"
+      ? (round.endTime as Date).toISOString()
+      : round.endTime;
+  const resolvedAt =
+    typeof (round.resolvedAt as { toISOString?: () => string })?.toISOString === "function"
+      ? (round.resolvedAt as Date).toISOString()
+      : (round.resolvedAt as string | null | undefined) ?? null;
+
   return {
-    id: round.id,
-    mode: round.mode,
-    status: round.status,
-    startTime:
-      typeof (round.startTime as { toISOString?: () => string })?.toISOString === "function"
-        ? (round.startTime as Date).toISOString()
-        : round.startTime,
-    endTime:
-      typeof (round.endTime as { toISOString?: () => string })?.toISOString === "function"
-        ? (round.endTime as Date).toISOString()
-        : round.endTime,
+    id: String(round.id ?? ""),
+    mode: String(round.mode ?? ""),
+    status: String(round.status ?? ""),
+    startTime: (startTime as string | null | undefined) ?? null,
+    endTime: (endTime as string | null | undefined) ?? null,
     startPrice: serializeNullableMoney(round.startPrice as MoneyInput),
     endPrice: serializeNullableMoney(round.endPrice as MoneyInput),
     poolUp: serializeMoney((round.poolUp ?? 0) as MoneyInput),
     poolDown: serializeMoney((round.poolDown ?? 0) as MoneyInput),
     priceRanges: serializePriceRanges(round.priceRanges),
-    resolvedAt:
-      typeof (round.resolvedAt as { toISOString?: () => string })?.toISOString === "function"
-        ? (round.resolvedAt as Date).toISOString()
-        : round.resolvedAt ?? null,
+    resolvedAt,
   };
 }
 

@@ -144,7 +144,7 @@ function buildMockFrontendCard(asset: string, index: number): FrontendRoundCard 
       predictionCount: asset === "BTC" ? 4 : asset === "ETH" ? 7 : 2,
       canPredict: true,
     },
-  }) as FrontendRoundCard;
+  }) as unknown as FrontendRoundCard;
 }
 
 function buildLiveFrontendCard(round: SorobanRound | null): FrontendRoundCard | null {
@@ -191,7 +191,7 @@ function buildLiveFrontendCard(round: SorobanRound | null): FrontendRoundCard | 
     },
     sorobanRoundId: mappedRound.sorobanRoundId,
     isSoroban: mappedRound.isSoroban,
-  }) as FrontendRoundCard;
+  }) as unknown as FrontendRoundCard;
 }
 
 export function mapSorobanRoundToFrontendCards(round: SorobanRound | null): FrontendRoundCard[] {

@@ -9,35 +9,10 @@ import { sendSuccess } from '../utils/response';
 
 const router = Router();
 
-// ── XP and rank helpers ────────────────────────────────────────────────────
-// Mirrors the logic in user.routes.ts so both endpoints produce consistent
-// rank titles for the same on-chain stats.
-
 function computeXp(totalWins: number, bestStreak: number): number {
   return totalWins * 100 + bestStreak * 50;
 }
 
-function computeRankTitle(xp: number): string {
-  if (xp >= 10000) return 'Diamond';
-  if (xp >= 5000) return 'Platinum';
-  if (xp >= 3000) return 'Gold';
-  if (xp >= 1500) return 'Silver';
-  if (xp >= 500) return 'Bronze';
-  return 'Rookie';
-}
-
-/**
- * Computes an XP score from on-chain user stats.
- * XP = totalWins × 100 + bestStreak × 50
- */
-function computeXp(totalWins: number, bestStreak: number): number {
-  return totalWins * 100 + bestStreak * 50;
-}
-
-/**
- * Derives a rank title from XP.
- * Thresholds match production profile expectations.
- */
 function computeRankTitle(xp: number): string {
   if (xp >= 10000) return 'Diamond';
   if (xp >= 5000) return 'Platinum';

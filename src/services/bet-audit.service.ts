@@ -270,6 +270,26 @@ class BetAuditService {
     });
   }
 
+  private async persistClaimToDatabase(event: BetAuditEvent): Promise<void> {
+    await prisma.auditLog.create({
+      data: {
+        eventType: event.event,
+        severity: "info",
+        message: `Claim accepted: ${event.amount} XLM`,
+        outcome: "success",
+        actorType: "user",
+        walletAddress: event.address,
+        resourceType: "claim",
+        metadata: {
+          amount: event.amount,
+          result: event.result,
+          txHash: event.txHash,
+        } as any,
+        timestamp: new Date(event.createdAt),
+      },
+    });
+  }
+
    /** Return a copy of all in-memory events (for testing / analytics). */
    getEvents(): BetAuditEvent[] {
      return [...this.events];
@@ -315,35 +335,6 @@ class BetAuditService {
    clear(): void {
      this.events = [];
    }
-  private async persistClaimToDatabase(event: BetAuditEvent): Promise<void> {
-    await prisma.auditLog.create({
-      data: {
-        eventType: event.event,
-        severity: "info",
-        message: `Claim accepted: ${event.amount} XLM`,
-        outcome: "success",
-        actorType: "user",
-        walletAddress: event.address,
-        resourceType: "claim",
-        metadata: {
-          amount: event.amount,
-          result: event.result,
-          txHash: event.txHash,
-        } as any,
-        timestamp: new Date(event.createdAt),
-      },
-    });
-  }
-
-  /** Return a copy of all in-memory events (for testing / analytics). */
-  getEvents(): BetAuditEvent[] {
-    return [...this.events];
-  }
-
-  /** Clear all in-memory events (for test isolation). */
-  clear(): void {
-    this.events = [];
-  }
 }
 
 export const betAuditService = new BetAuditService();

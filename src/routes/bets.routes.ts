@@ -4,7 +4,6 @@ import {
   verifyStellarAuth,
   bindAuthenticatedWallet,
   requireAdmin,
-  AuthenticatedRequest,
 } from "../middleware/auth.middleware";
 import { betRateLimiter } from "../middleware/rateLimiter.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
@@ -301,13 +300,13 @@ router.post(
 router.post(
   "/claim",
   verifyStellarAuth,
-  (req, _res, next) => {
+  (req: Request, _res: Response, next: NextFunction) => {
     req.body = req.body ?? {};
     next();
   },
   bindAuthenticatedWallet,
   validate(claimWinningsSchema),
-  (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  (async (req: Request, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user!.userId;
     const endpoint = "/api/bets/claim";
