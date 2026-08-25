@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, jest } from "@jest/globals";
 import request from "supertest";
 import { Express } from "express";
 import { UserRole } from "@prisma/client";
-import { createApp } from "../index";
+import { createApp } from "../app-factory";
 import { generateToken } from "../utils/jwt.util";
 import { Decimal } from "@prisma/client/runtime/library";
 import { toDecimalString, serializeMoney } from "../utils/decimal.util";
@@ -67,7 +67,7 @@ describe("Monetary Field Serialization in API Responses", () => {
   let token: string;
 
   beforeAll(() => {
-    app = createApp();
+    app = createApp({ mode: "full" });
     token = generateToken(MOCK_USER_ID, MOCK_WALLET, UserRole.USER);
   });
 
