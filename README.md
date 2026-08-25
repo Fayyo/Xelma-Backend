@@ -454,6 +454,7 @@ The mapper in [src/utils/soroban-round.mapper.ts](src/utils/soroban-round.mapper
 - Single prediction submit: 10 requests/minute per user
 - Batch prediction submit: **3 requests/minute per user** (stricter; each batch may include up to 50 predictions)
 - Batch leaderboard lookup: 10 requests/minute per user
+- Authenticated bets (`POST /api/bets/up-down`, `POST /api/bets/precision`): **5 requests/minute per IP**
 - Auth, chat, admin round creation, and oracle resolve endpoints have tailored policies
 - Rate-limit hits are recorded for the admin metrics dashboard (`GET /api/admin/metrics/rate-limits`)
 
@@ -1219,25 +1220,50 @@ CI runs `npm run test:unit:coverage` (unit tests with coverage upload) and `npm 
 
 ### Load test harness
 
-`npm run test:load` runs `src/tests/performance.spec.ts`, which exercises:
+`npm run test:load` runs the Jest performance suite (`performance.spec.ts` and
+`performance-backpressure.spec.ts`). It is **manual** on every PR and also runs
+on a **nightly** GitHub Actions workflow (`.github/workflows/load-test.yml`).
 
-- **Single-request latency baselines** for auth, active rounds, and prediction submit (#152).
-- **Concurrent prediction throughput** â€” N parallel `POST /api/predictions/submit` requests with aggregate RPS and p95 latency assertions.
-- **WebSocket fanout** â€” M clients join the `round` room and must receive `prediction:placed` within the configured p95 budget.
+Scenarios:
 
-The harness lives in `src/tests/load-test.harness.ts` and uses mocked Prisma/Soroban so it stays repeatable in CI without a live database. Tune thresholds via env vars (see `.env.example` â†’ â€œLoad / performance test harnessâ€):
+- **Latency baselines** for auth, active rounds, and prediction submit (#152).
+- **Concurrent prediction throughput** with aggregate RPS and p95 latency.
+- **Authenticated bets** — concurrent `POST /api/bets/up-down` (#500).
+- **Duplicate idempotency** — same `Idempotency-Key` burst; only one bet is created (#500).
+- **Read rounds** — concurrent `GET /api/rounds/active` (#500).
+- **Overload** — burst bets against the real rate limiter; expect **429**, never 500 (#500).
+- **Breaker mapping** — open circuit / in-flight cap map to **503** + `Retry-After` (#500).
+- **WebSocket fanout** — connected clients receive `prediction:placed` within the p95 budget.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `LOAD_TEST_PREDICTION_CONCURRENCY` | `10` | Max in-flight prediction requests |
-| `LOAD_TEST_PREDICTION_ITERATIONS` | `30` | Total prediction requests per run |
-| `LOAD_TEST_PREDICTION_MIN_RPS` | `5` | Minimum acceptable throughput |
-| `LOAD_TEST_PREDICTION_P95_MS` | `500` | Max p95 latency for predictions |
-| `LOAD_TEST_WS_CLIENTS` | `20` | Connected sockets for fanout test |
-| `LOAD_TEST_WS_MIN_DELIVERY_RATE` | `1` | Minimum delivery ratio (0â€“1) |
-| `LOAD_TEST_WS_P95_MS` | `250` | Max p95 fanout delivery time |
+The harness lives in `src/tests/load-test.harness.ts`. Throughput tests mock
+Prisma/Soroban so they stay repeatable without a live database. Overload tests
+keep the real rate limiters. Tune thresholds via env vars (see `.env.example`).
+
+#### Demo vs production defaults
+
+| Knob | Demo (default) | Production |
+|------|----------------|------------|
+| `BET_STUB_MODE` | `true` | `false` |
+| `SOROBAN_FAIL_CLOSED` | `false` | `true` |
+| Bet rate limit | 5 / minute / IP | same until a live run says otherwise |
+| Prediction submit | 10 / minute / user | same |
+| Write methods (hackathon global) | 20 / minute / IP | same |
+| Soroban breaker | 3 failures, 30s open | same |
+| Soroban in-flight cap | 8 | 8–16 after measuring RPC p95 |
+
+Do not raise these because a demo felt slow. Raise them only after `npm run test:load` (and a staging burst) shows p95 and error rate staying inside budget.
 
 Each run prints `[LOAD]` summary lines to stdout for before/after comparisons in PRs.
+
+Example (local, mocked Prisma — numbers vary by machine):
+
+```
+[LOAD] auth bet throughput
+  total=16 success=16 fail=0 errorRate=0.0%
+  latency ms: p50=... p95=... p99=...
+[LOAD] bet overload 429
+  statuses: 200xN 429xM
+```
 
 Coverage thresholds are enforced in `jest.config.ts` for lines, branches, functions, and statements. The current floor is intentionally conservative and excludes tests, mocks, generated files, scripts, and vendored bindings so the gate tracks application code. CI runs `npm run test:unit:coverage`, prints the Jest coverage summary, uploads `coverage/`, and fails when the thresholds are not met.
 
@@ -1274,7 +1300,7 @@ At minimum, migration PRs should include:
 | `npm run test:coverage` | Run Jest with coverage reporting and thresholds |
 | `npm run test:unit:coverage` | Run unit tests with coverage reporting and thresholds |
 | `npm run test:watch` | Run tests in watch mode |
-| `npm run test:load` | Run repeatable load baselines for prediction throughput and websocket fanout |
+| `npm run test:load` | Run load baselines plus overload 429/503 backpressure checks |
 | `npm run ci` | Run lint, build, unit coverage, and integration tests |
 | `npm run prisma:generate` | Generate Prisma client |
 | `npm run prisma:migrate` | Run database migrations |
@@ -1288,6 +1314,17 @@ At minimum, migration PRs should include:
 | `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
 | `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
 | `npm run scorecard` | Run the production-readiness scorecard |
+| `npm run pr:publish` | Push the fork branch and open/update a PR as **your** git/GitHub user, stripping Cursor co-author trailers |
+
+Do not use `gh pr create` from Cursor Agent — it appends “Made with Cursor” and injects a `Co-authored-by: Cursor` commit trailer. Stage your files, then run **node** (Windows `npm run` often swallows `--flags`):
+
+```bash
+git add -A
+node scripts/publish-pr.js --title "Add load-test harness" --issue 500
+node scripts/publish-pr.js --fix-existing
+```
+
+Or: `npm run pr:publish --fix-existing` / `npm run pr:publish --title="..." --issue=500` (equals-form flags). The script rewrites HEAD with `git commit-tree` (so Cursor cannot re-inject the trailer), force-with-lease pushes the `fork` remote, and creates or updates the upstream PR.
 
 ---
 

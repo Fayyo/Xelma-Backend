@@ -48,6 +48,7 @@ jest.mock("../middleware/rateLimiter.middleware", () => ({
   batchLeaderboardRateLimiter: passthroughLimiter,
   adminRoundRateLimiter: passthroughLimiter,
   oracleResolveRateLimiter: passthroughLimiter,
+  betRateLimiter: passthroughLimiter,
 }));
 
 const originalEnv = process.env;

@@ -43,6 +43,11 @@ interface InMemoryIdempotencyRecord {
 
 const inMemoryIdempotencyStore = new Map<string, InMemoryIdempotencyRecord>();
 
+/** Test helper: drop all in-memory idempotency records (expired or not). */
+export function resetInMemoryIdempotencyStore(): void {
+   inMemoryIdempotencyStore.clear();
+}
+
 function usesInMemoryStore(): boolean {
    return (
       process.env.DATA_STORE === 'memory' ||

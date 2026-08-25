@@ -1,5 +1,7 @@
 import { decAdd, toNumber } from '../utils/decimal.util';
 
+export type BetStatus = 'STUB' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+
 export interface StoredBet {
   id: string;
   address: string;
@@ -93,28 +95,18 @@ class BetStore {
     this.rounds = new Map(SEED_ROUNDS.map(r => [r.id, { ...r }]));
   }
 
-  addUpDownBet(roundId: string, address: string, amount: number, side: 'UP' | 'DOWN'): void {
-    const round = this.rounds.get(roundId);
-    if (!round || round.mode !== 'updown') return;
-
-    if (side === 'UP') round.poolUp = toNumber(decAdd(round.poolUp, amount));
-    else round.poolDown = toNumber(decAdd(round.poolDown, amount));
-    round.totalPool = toNumber(decAdd(round.poolUp, round.poolDown));
-
-    this.bets.push({ roundId, address, amount, side, timestamp: new Date().toISOString() });
-    this.totalBetsCount++;
-  }
-
-  addPrecisionBet(roundId: string, address: string, amount: number, predictedPrice: number): void {
-    const round = this.rounds.get(roundId);
-    if (!round || round.mode !== 'precision') return;
-
-    round.totalPool = toNumber(decAdd(round.totalPool, amount));
-    round.predictionCount++;
-
-    this.bets.push({ roundId, address, amount, predictedPrice, timestamp: new Date().toISOString() });
-    this.totalBetsCount++;
-    return stored;
+  private recordBet(
+    input: Omit<StoredBet, "id" | "timestamp"> & { timestamp?: string },
+  ): StoredBet {
+    this.betSequence += 1;
+    const bet: StoredBet = {
+      id: `bet-${this.betSequence}`,
+      timestamp: input.timestamp ?? new Date().toISOString(),
+      ...input,
+    };
+    this.bets.set(bet.id, bet);
+    this.totalBetsCount += 1;
+    return bet;
   }
 
   addUpDownBet(

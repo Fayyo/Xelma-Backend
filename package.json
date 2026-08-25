@@ -17,7 +17,7 @@
     "test:integration": "jest --selectProjects integration",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
-    "test:load": "jest --testPathPattern=performance.spec.ts",
+    "test:load": "jest --testPathPattern=performance",
     "test:hackathon": "npx ts-node src/tests/hackathon.test.ts",
     "test:hackathon:http": "jest --selectProjects integration --testPathPattern=hackathon\\.http\\.spec\\.ts",
     "ci": "npm run lint && npm run build && npm run test:unit:coverage && npm run test:integration",
@@ -33,7 +33,8 @@
     "db:seed:mock": "ts-node scripts/seed-mock-data.ts",
     "db:seed:tournaments": "ts-node scripts/seed-tournaments.ts",
     "dev:hackathon": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "smoke-test": "node scripts/smoke-test.js"
+    "smoke-test": "node scripts/smoke-test.js",
+    "pr:publish": "node scripts/publish-pr.js"
   },
   "keywords": [],
   "author": "",

@@ -55,6 +55,7 @@ jest.mock('../middleware/rateLimiter.middleware', () => ({
   predictionRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   adminRoundRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   oracleResolveRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  betRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   batchPredictionRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   batchLeaderboardRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));

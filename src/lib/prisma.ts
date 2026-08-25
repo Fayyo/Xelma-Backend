@@ -82,6 +82,14 @@ export const prisma = (() => {
           findMany: async () => store,
         };
       })(),
+      round: {
+        findMany: async () => [],
+        findUnique: async () => null,
+        findFirst: async () => null,
+        create: async ({ data }: any) => ({ id: "round-1", ...data }),
+        update: async ({ data }: any) => data,
+        count: async () => 0,
+      },
       // Add a generic $queryRaw mock for connectivity checks.
       $queryRaw: async () => null,
     } as any;
