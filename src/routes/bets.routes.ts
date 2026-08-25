@@ -4,7 +4,6 @@ import {
   verifyStellarAuth,
   bindAuthenticatedWallet,
   requireAdmin,
-  AuthenticatedRequest,
 } from "../middleware/auth.middleware";
 import { betRateLimiter } from "../middleware/rateLimiter.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
@@ -26,6 +25,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import { sendSuccess } from "../utils/response";
+import { serializeBet } from "../serializers/monetary.serializer";
 
 const router = Router();
 
@@ -300,13 +300,13 @@ router.post(
 router.post(
   "/claim",
   verifyStellarAuth,
-  (req, _res, next) => {
+  (req: Request, _res: Response, next: NextFunction) => {
     req.body = req.body ?? {};
     next();
   },
   bindAuthenticatedWallet,
   validate(claimWinningsSchema),
-  (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  (async (req: Request, res: Response, next: NextFunction) => {
     const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
     const userId = req.user!.userId;
     const endpoint = "/api/bets/claim";
@@ -439,7 +439,7 @@ router.get(
         success: true,
         summary: betService.getReconciliationSummary(),
         count: bets.length,
-        bets,
+        bets: bets.map((bet) => serializeBet(bet as unknown as Record<string, unknown>)),
       });
     } catch (error) {
       next(error);
@@ -482,7 +482,7 @@ router.get(
         throw new NotFoundError(`Bet ${req.params.id} not found`);
       }
 
-      res.json({ success: true, bet });
+      res.json({ success: true, bet: serializeBet(bet as unknown as Record<string, unknown>) });
     } catch (error) {
       next(error);
     }

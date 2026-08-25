@@ -95,11 +95,11 @@ describe('Hackathon Endpoints & Middleware', () => {
           totalLosses: 0,
           bestStreak: 0,
           currentStreak: 0,
-          pendingWinnings: "0",
+          pendingWinnings: "0.00000000",
           isRegistered: false,
         },
         profile: {
-          balance: 0,
+          balance: "0.00000000",
           xp: 0,
           rankTitle: "Rookie",
         },
@@ -125,11 +125,11 @@ describe('Hackathon Endpoints & Middleware', () => {
           totalLosses: 2,
           bestStreak: 5,
           currentStreak: 3,
-          pendingWinnings: "50000000",
+          pendingWinnings: "50000000.00000000",
           isRegistered: true,
         },
         profile: {
-          balance: 1250,
+          balance: "1250.00000000",
           xp: 1250, // 10*100 + 5*50 = 1250
           rankTitle: "Bronze",
         },

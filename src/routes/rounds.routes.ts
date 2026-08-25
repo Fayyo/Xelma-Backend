@@ -4,13 +4,13 @@ import resolutionService from '../services/resolution.service';
 import simulationService from '../services/simulation.service';
 import { requireAdmin, requireOracle, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/errorHandler.middleware';
-import { toDecimal, toDecimalString } from '../utils/decimal.util';
+import { toDecimal } from '../utils/decimal.util';
+import { serializeRound } from '../serializers/monetary.serializer';
 import { adminRoundRateLimiter, betRateLimiter, oracleResolveRateLimiter } from '../middleware/rateLimiter.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { sendSuccess } from '../utils/response';
 import { startRoundSchema, resolveRoundSchema } from '../schemas/rounds.schema';
 import { betSchema, upDownBetSchema, precisionBetSchema } from '../schemas/bets.schema';
-import { toDecimal, toDecimalString } from '../utils/decimal.util';
 import { NotFoundError } from '../utils/errors';
 import { getRepositories } from '../repositories';
 import config from '../config';
@@ -32,7 +32,7 @@ const router = Router();
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const { source, rounds } = await roundService.getRoundsForApi();
-    sendSuccess(res, { source, rounds });
+    sendSuccess(res, { source, rounds: rounds.map((round: Record<string, unknown>) => serializeRound(round)) });
   } catch (err) {
     next(err);
   }
@@ -98,17 +98,17 @@ router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSc
 
     res.json({
         success: true,
-        round: {
+        round: serializeRound({
             id: round.id,
             mode: round.mode,
             status: round.status,
             startTime: round.startTime,
             endTime: round.endTime,
-            startPrice: toDecimalString(round.startPrice),
+            startPrice: round.startPrice,
             sorobanRoundId: round.sorobanRoundId,
             isSoroban: round.isSoroban,
             priceRanges: round.priceRanges,
-        },
+        }),
     });
 }));
 
@@ -127,13 +127,7 @@ router.get('/active', async (req: Request, res: Response, next: NextFunction) =>
     try {
         const { source, rounds } = await roundService.getRoundsForApi();
 
-        const serializedRounds = rounds.map((round: any) => ({
-            ...round,
-            startPrice: toDecimalString(round.startPrice),
-            endPrice: round.endPrice !== null && round.endPrice !== undefined ? toDecimalString(round.endPrice) : null,
-            poolUp: toDecimalString(round.poolUp),
-            poolDown: toDecimalString(round.poolDown),
-        }));
+        const serializedRounds = rounds.map((round: Record<string, unknown>) => serializeRound(round));
 
         res.json({
             success: true,
@@ -174,18 +168,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
          res.json({
             success: true,
-            round: {
-                ...round,
-                startPrice: toDecimalString(round.startPrice),
-                endPrice: round.endPrice !== null && round.endPrice !== undefined ? toDecimalString(round.endPrice) : null,
-                poolUp: toDecimalString(round.poolUp),
-                poolDown: toDecimalString(round.poolDown),
-                predictions: round.predictions?.map((p: any) => ({
-                    ...p,
-                    amount: toDecimalString(p.amount),
-                    payout: p.payout !== null && p.payout !== undefined ? toDecimalString(p.payout) : null,
-                })),
-            },
+            round: serializeRound(round),
         });
     } catch (error) {
         next(error);
@@ -246,11 +229,13 @@ router.post('/:id/resolve', requireOracle, oracleResolveRateLimiter, validate(re
         success: true,
         outcome,
         round: {
-            id: round.id,
-            status: round.status,
-            startPrice: toDecimalString(round.startPrice),
-            endPrice: round.endPrice !== null && round.endPrice !== undefined ? toDecimalString(round.endPrice) : null,
-            resolvedAt: round.resolvedAt,
+            ...serializeRound({
+                id: round.id,
+                status: round.status,
+                startPrice: round.startPrice,
+                endPrice: round.endPrice,
+                resolvedAt: round.resolvedAt,
+            }),
             predictions: round.predictions ? round.predictions.length : 0,
             winners: round.predictions ? round.predictions.filter((p: any) => p.won === true).length : 0,
         },

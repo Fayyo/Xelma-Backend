@@ -169,7 +169,7 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
             asset: expect.any(String),
             mode: expect.any(String),
             status: expect.any(String),
-            startPrice: expect.any(Number),
+            startPrice: expect.any(String),
           })
         );
       }
@@ -258,7 +258,7 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
             pendingWinnings: expect.any(String),
           }),
           profile: expect.objectContaining({
-            balance: expect.any(Number),
+            balance: expect.any(String),
             xp: expect.any(Number),
             rankTitle: expect.any(String),
           }),

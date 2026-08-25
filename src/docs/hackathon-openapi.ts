@@ -196,8 +196,8 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
               type: 'string',
               enum: ['UPCOMING', 'ACTIVE', 'COMPLETED', 'CANCELLED'],
             },
-            entryFee: { type: 'string' },
-            prizePool: { type: 'string' },
+            entryFee: { $ref: '#/components/schemas/MoneyAmount' },
+            prizePool: { $ref: '#/components/schemas/MoneyAmount' },
             maxParticipants: { type: 'integer' },
             currentParticipants: { type: 'integer' },
             startTime: { type: 'string', format: 'date-time' },
@@ -231,5 +231,6 @@ export const hackathonSwaggerSpec = swaggerJSDoc({
     path.join(process.cwd(), 'src/routes/rounds.ts'),
     path.join(process.cwd(), 'src/routes/leaderboard.ts'),
     path.join(process.cwd(), 'src/routes/tournaments.routes.ts'),
+    path.join(process.cwd(), 'src/routes/user.ts'),
   ],
 });

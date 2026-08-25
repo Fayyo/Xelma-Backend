@@ -137,10 +137,10 @@ export function errorHandler(
  * Usage:
  * router.get('/path', asyncHandler(async (req, res) => { ... }));
  */
-export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
+export function asyncHandler<Req extends Request = Request>(
+  fn: (req: Req, res: Response, next: NextFunction) => Promise<unknown>,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req as Req, res, next)).catch(next);
   };
 }

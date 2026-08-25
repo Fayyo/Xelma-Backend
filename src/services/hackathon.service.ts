@@ -1,9 +1,8 @@
 import { db } from '../db/db';
-import { hackathonUsers, hackathonRounds, hackathonBets } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
-import { decAdd, decSub, toNumber } from '../utils/decimal.util';
+import { hackathonUsers, hackathonRounds } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import { decAdd, decSub, toNumber, toDecimal } from '../utils/decimal.util';
 import { prisma } from '../lib/prisma';
-import { toDecimal, toNumber, decGte } from '../utils/decimal.util';
 import { Decimal } from '@prisma/client/runtime/library';
 import { BusinessRuleError, ErrorCode } from '../utils/errors';
 import logger from '../utils/logger';
@@ -26,7 +25,28 @@ export interface BetResult {
 }
 
 export class HackathonService {
-  async placeBet(input: PlaceBetInput): Promise<BetResult> {
+  async placeBet(input: PlaceBetInput): Promise<BetResult>;
+  async placeBet(
+    roundId: string,
+    address: string,
+    amount: number,
+    side?: 'UP' | 'DOWN',
+    predictedPrice?: number,
+  ): Promise<void>;
+  async placeBet(
+    inputOrRoundId: PlaceBetInput | string,
+    address?: string,
+    amount?: number,
+    side?: 'UP' | 'DOWN',
+    predictedPrice?: number,
+  ): Promise<BetResult | void> {
+    if (typeof inputOrRoundId === 'string') {
+      return this.placeMockBet(inputOrRoundId, address!, amount!, side, predictedPrice);
+    }
+    return this.placeTransactionalBet(inputOrRoundId);
+  }
+
+  private async placeTransactionalBet(input: PlaceBetInput): Promise<BetResult> {
     const { userId, roundId, amount, side } = input;
     const decimalAmount = toDecimal(amount);
 
@@ -99,8 +119,8 @@ export class HackathonService {
         poolDown: updatedRound!.poolDown,
       };
     });
+  }
 
-export class HackathonService {
   async getRounds() {
     const rounds = await prisma.mockRound.findMany();
     return rounds.map(r => {
@@ -115,18 +135,17 @@ export class HackathonService {
           poolDown: r.poolDown,
           closesAt: r.closesAt,
         };
-      } else {
-        return {
-          id: r.id,
-          asset: r.asset,
-          mode: r.mode,
-          status: r.status,
-          startPrice: r.startPrice,
-          totalPool: r.totalPool,
-          predictionCount: r.predictionCount,
-          closesAt: r.closesAt,
-        };
       }
+      return {
+        id: r.id,
+        asset: r.asset,
+        mode: r.mode,
+        status: r.status,
+        startPrice: r.startPrice,
+        totalPool: r.totalPool,
+        predictionCount: r.predictionCount,
+        closesAt: r.closesAt,
+      };
     });
   }
 
@@ -157,7 +176,6 @@ export class HackathonService {
         rankTitle: existing.rankTitle,
       };
     }
-    // Default mock stats
     const defaultUser = {
       address,
       balance: 1000,
@@ -184,8 +202,13 @@ export class HackathonService {
     return defaultUser;
   }
 
-  async placeBet(roundId: string, address: string, amount: number, side?: 'UP' | 'DOWN', predictedPrice?: number) {
-    // 1. Ensure user exists
+  private async placeMockBet(
+    roundId: string,
+    address: string,
+    amount: number,
+    side?: 'UP' | 'DOWN',
+    predictedPrice?: number,
+  ): Promise<void> {
     const existing = await prisma.mockLeaderboard.findUnique({ where: { address } });
     if (!existing) {
       await prisma.mockLeaderboard.create({
@@ -203,7 +226,6 @@ export class HackathonService {
       });
     }
 
-    // 2. Insert bet
     await prisma.mockBet.create({
       data: {
         roundId,
@@ -214,7 +236,6 @@ export class HackathonService {
       },
     });
 
-    // 3. Update user balance
     const users = await db.select().from(hackathonUsers).where(eq(hackathonUsers.address, address));
     if (users.length > 0) {
       const remaining = decSub(users[0].balance, amount);
@@ -222,7 +243,6 @@ export class HackathonService {
       await db.update(hackathonUsers).set({ balance: newBalance }).where(eq(hackathonUsers.address, address));
     }
 
-    // 4. Update round pool
     const rounds = await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, roundId));
     if (rounds.length > 0) {
       const round = rounds[0];
@@ -243,6 +263,9 @@ export class HackathonService {
             predictionCount: round.predictionCount + 1,
           })
           .where(eq(hackathonRounds.id, roundId));
+      }
+    }
+
     const user = await prisma.mockLeaderboard.findUnique({ where: { address } });
     if (user) {
       const newBalance = Math.max(0, user.balance - amount);
@@ -252,7 +275,6 @@ export class HackathonService {
       });
     }
 
-    // 4. Update round pool
     const round = await prisma.mockRound.findUnique({ where: { id: roundId } });
     if (round) {
       if (round.mode === 'updown' && side) {

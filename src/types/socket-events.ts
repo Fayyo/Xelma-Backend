@@ -49,7 +49,7 @@ export interface PredictionPlacedPayload {
 export interface BetAcceptedPayload {
   roundId?: string;
   address: string;
-  amount: number;
+  amount: string;
   side?: 'UP' | 'DOWN';
   mode: 'UP_DOWN' | 'PRECISION';
   state: string;
@@ -78,10 +78,10 @@ export interface RoundUpdatePayload {
   status: string;
   startTime: string | null;
   endTime: string | null;
-  startPrice: number | null;
-  endPrice: number | null;
-  poolUp: number;
-  poolDown: number;
+  startPrice: string | null;
+  endPrice: string | null;
+  poolUp: string;
+  poolDown: string;
   priceRanges: unknown;
   resolvedAt: string | null;
 }

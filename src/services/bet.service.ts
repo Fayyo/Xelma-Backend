@@ -3,6 +3,7 @@ import logger from "../utils/logger";
 import sorobanService from "./soroban.service";
 import betAuditService from "./bet-audit.service";
 import websocketService from "./websocket.service";
+import { serializeMoney } from "../utils/decimal.util";
 
 export interface UpDownBetInput {
   address: string;
@@ -102,7 +103,7 @@ export class BetService {
     websocketService.emitBetAccepted({
       roundId,
       address: input.address,
-      amount: input.amount,
+      amount: serializeMoney(input.amount),
       side: input.side,
       mode: "UP_DOWN",
       state: result.state,
@@ -174,7 +175,7 @@ export class BetService {
     websocketService.emitBetAccepted({
       roundId,
       address: input.address,
-      amount: input.amount,
+      amount: serializeMoney(input.amount),
       mode: "PRECISION",
       state: result.state,
       txHash: result.txHash,

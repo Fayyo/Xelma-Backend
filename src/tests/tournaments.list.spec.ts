@@ -193,8 +193,8 @@ describe("Tournament listing (#378)", () => {
         id: "db-1",
         mode: "LEGENDS",
         status: "ACTIVE",
-        entryFee: "5",
-        prizePool: "50",
+        entryFee: "5.00000000",
+        prizePool: "50.00000000",
       });
     });
   });
