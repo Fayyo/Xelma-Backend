@@ -48,6 +48,12 @@ export interface SorobanConfig {
    * Production should set SOROBAN_FAIL_CLOSED=true.
    */
   failClosed: boolean;
+  /** Consecutive RPC failures before the Soroban circuit breaker opens. */
+  breakerFailureThreshold: number;
+  /** How long the Soroban circuit breaker stays open before a half-open probe. */
+  breakerOpenBackoffMs: number;
+  /** Max concurrent Soroban RPC calls; extras are rejected with 503. */
+  moneyPathMaxInFlight: number;
 }
 
 export interface SchedulerConfig {
@@ -206,6 +212,21 @@ function buildConfig(): Config {
     oracleSecret: v.optional(sorobanEnv.oracleSecret, ""),
     // Default fail-open for local/demo; production should set true.
     failClosed: v.boolean(env.SOROBAN_FAIL_CLOSED, false),
+    breakerFailureThreshold: v.positiveInt(
+      env.SOROBAN_BREAKER_FAILURE_THRESHOLD,
+      "SOROBAN_BREAKER_FAILURE_THRESHOLD",
+      3,
+    ),
+    breakerOpenBackoffMs: v.positiveInt(
+      env.SOROBAN_BREAKER_OPEN_BACKOFF_MS,
+      "SOROBAN_BREAKER_OPEN_BACKOFF_MS",
+      30_000,
+    ),
+    moneyPathMaxInFlight: v.positiveInt(
+      env.SOROBAN_MONEY_PATH_MAX_IN_FLIGHT,
+      "SOROBAN_MONEY_PATH_MAX_IN_FLIGHT",
+      8,
+    ),
   };
 
   const scheduler: SchedulerConfig = {

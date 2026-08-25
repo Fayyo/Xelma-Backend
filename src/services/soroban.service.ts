@@ -6,6 +6,8 @@ import { toDecimal } from "../utils/decimal.util";
 import { stroopsToXlm } from "../utils/payout.util";
 import { withTimeout, TimeoutResult } from "../utils/timeout-wrapper";
 import { CircuitBreaker, CircuitBreakerOpenError } from "../utils/circuit-breaker";
+import { createConcurrencyLimiter } from "../utils/backpressure";
+import { BackpressureError } from "../utils/errors";
 import { Decimal } from "@prisma/client/runtime/library";
 import { mapSorobanError } from "../utils/errors";
 import {
@@ -48,8 +50,13 @@ export class SorobanService {
   private readonly MAX_RETRIES = 2; // 2 retries for transient failures
   private readonly breaker = new CircuitBreaker({
     name: "soroban-rpc",
-    failureThreshold: 3,
-    openBackoffMs: 30_000,
+    failureThreshold: config.soroban.breakerFailureThreshold,
+    openBackoffMs: config.soroban.breakerOpenBackoffMs,
+  });
+  private readonly rpcLimiter = createConcurrencyLimiter({
+    name: "soroban-rpc",
+    maxInFlight: config.soroban.moneyPathMaxInFlight,
+    retryAfterSeconds: 1,
   });
 
   constructor() {
@@ -163,13 +170,15 @@ export class SorobanService {
     const startMs = Date.now();
 
     try {
-      const result = await this.breaker.execute(async () => {
-        const timeoutResult = await operation();
-        if (!timeoutResult.success) {
-          throw timeoutResult.error ?? new Error(`${operationName} failed`);
-        }
-        return timeoutResult;
-      });
+      const result = await this.rpcLimiter.execute(() =>
+        this.breaker.execute(async () => {
+          const timeoutResult = await operation();
+          if (!timeoutResult.success) {
+            throw timeoutResult.error ?? new Error(`${operationName} failed`);
+          }
+          return timeoutResult;
+        }),
+      );
 
       const latencySeconds = (Date.now() - startMs) / 1000;
       sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
@@ -179,6 +188,10 @@ export class SorobanService {
     } catch (error) {
       const latencySeconds = (Date.now() - startMs) / 1000;
       sorobanRpcDurationSeconds.observe({ operation: operationName }, latencySeconds);
+
+      if (error instanceof BackpressureError) {
+        throw error;
+      }
 
       if (error instanceof CircuitBreakerOpenError) {
         sorobanRpcCallsTotal.inc({ operation: operationName, outcome: "breaker_open" });
