@@ -305,6 +305,8 @@ describe("RetentionService", () => {
       expect(results[2].deletedCount).toBe(75);
       expect(results[3].entity).toBe("idempotencyKeys");
       expect(results[3].deletedCount).toBe(0);
+      expect(results[3].entity).toBe("idempotencyKeys");
+      expect(results[3].deletedCount).toBe(0);
       
       expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining("180 total records deleted"),

@@ -3,6 +3,8 @@ import { prisma } from "../lib/prisma";
 import { NotFoundError, ConflictError, ValidationError } from "../utils/errors";
 import { buildOffsetPage } from "../utils/pagination.util";
 import type { TournamentListQuery } from "../schemas/tournament.schema";
+import { serializeMoney } from "../utils/decimal.util";
+import { serializeTournament } from "../serializers/monetary.serializer";
 
 export interface TournamentListItem {
   id: string;
@@ -121,8 +123,8 @@ function mapPrismaTournament(row: {
     description: row.description,
     mode: row.mode,
     status: row.status,
-    entryFee: row.entryFee.toString(),
-    prizePool: row.prizePool.toString(),
+    entryFee: serializeMoney(row.entryFee),
+    prizePool: serializeMoney(row.prizePool),
     maxParticipants: row.maxParticipants,
     currentParticipants: row.currentParticipants,
     startTime: row.startTime.toISOString(),
@@ -156,7 +158,7 @@ export class TournamentService {
     const { limit, offset, mode, status } = query;
     const filtered = filterTournaments(MOCK_TOURNAMENTS, { mode, status });
     const total = filtered.length;
-    const page = filtered.slice(offset, offset + limit);
+    const page = filtered.slice(offset, offset + limit).map((item) => serializeTournament(item));
     return buildOffsetPage(page, limit, offset, total);
   }
 
@@ -185,13 +187,15 @@ export class TournamentService {
   }
 
   getMockById(id: string): TournamentListItem | undefined {
-    return MOCK_TOURNAMENTS.find((t) => t.id === id);
+    const item = MOCK_TOURNAMENTS.find((t) => t.id === id);
+    return item ? serializeTournament(item) : undefined;
   }
 
   async joinTournament(
     userId: string,
     tournamentId: string,
   ): Promise<{ currentParticipants: number }> {
+    // Non-race-sensitive checks stay outside the transaction
     const tournament = await prisma.tournament.findUnique({
       where: { id: tournamentId },
     });
@@ -204,29 +208,50 @@ export class TournamentService {
       throw new ValidationError("Tournament is cancelled");
     }
 
-    if (tournament.currentParticipants >= tournament.maxParticipants) {
-      throw new ConflictError("Tournament is full");
-    }
-
-    const existing = await prisma.tournamentParticipant.findUnique({
-      where: {
-        tournamentId_userId: { tournamentId, userId },
-      },
-    });
-
-    if (existing) {
-      throw new ConflictError("Already joined this tournament");
-    }
-
-    const [, updated] = await prisma.$transaction([
-      prisma.tournamentParticipant.create({
-        data: { tournamentId, userId },
-      }),
-      prisma.tournament.update({
+    // Atomic join: capacity check + duplicate check + create + increment
+    // all inside the same interactive transaction to prevent check-then-act races.
+    const updated = await prisma.$transaction(async (tx) => {
+      // Re-fetch tournament inside transaction for a consistent snapshot
+      const txTournament = await tx.tournament.findUnique({
         where: { id: tournamentId },
-        data: { currentParticipants: { increment: 1 } },
-      }),
-    ]);
+      });
+
+      if (!txTournament) {
+        throw new NotFoundError("Tournament not found");
+      }
+
+      if (txTournament.status === "CANCELLED") {
+        throw new ValidationError("Tournament is cancelled");
+      }
+
+      // Atomic capacity check — serialised by the transaction so concurrent
+      // requests see the latest count before deciding to join.
+      if (txTournament.currentParticipants >= txTournament.maxParticipants) {
+        throw new ConflictError("Tournament is full");
+      }
+
+      const existing = await tx.tournamentParticipant.findUnique({
+        where: {
+          tournamentId_userId: { tournamentId, userId },
+        },
+      });
+
+      if (existing) {
+        throw new ConflictError("Already joined this tournament");
+      }
+
+      const [, updatedTournament] = await Promise.all([
+        tx.tournamentParticipant.create({
+          data: { tournamentId, userId },
+        }),
+        tx.tournament.update({
+          where: { id: tournamentId },
+          data: { currentParticipants: { increment: 1 } },
+        }),
+      ]);
+
+      return updatedTournament;
+    });
 
     return { currentParticipants: updated.currentParticipants };
   }

@@ -1,5 +1,5 @@
-import path from 'path';
 import swaggerJSDoc from 'swagger-jsdoc';
+import { sharedComponents } from './shared-components';
 
 const PORT = process.env.PORT || 3000;
 const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
@@ -28,40 +28,31 @@ export const swaggerSpec = swaggerJSDoc({
         },
       },
       schemas: {
+        // ── Shared base (re-declared via allOf with production-specific fields) ──
         ErrorResponse: {
-          type: 'object',
-          description: 'Standard error response returned by all API endpoints on failure.',
-          properties: {
-            error: {
-              type: 'string',
-              description: 'Error class name (e.g. ValidationError, AuthenticationError, NotFoundError)',
-              example: 'ValidationError',
-            },
-            message: {
-              type: 'string',
-              description: 'Human-readable description of the error',
-              example: 'walletAddress is required',
-            },
-            code: {
-              type: 'string',
-              description: 'Machine-readable error code for programmatic handling',
-              example: 'VALIDATION_ERROR',
-            },
-            details: {
-              type: 'array',
-              description: 'Field-level validation details (present on validation errors only)',
-              items: {
-                type: 'object',
-                properties: {
-                  field: { type: 'string', example: 'walletAddress' },
-                  message: { type: 'string', example: 'walletAddress is required' },
+          allOf: [
+            { $ref: '#/components/schemas/BaseErrorResponse' },
+            {
+              type: 'object',
+              properties: {
+                details: {
+                  type: 'array',
+                  description: 'Field-level validation details (present on validation errors only)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      field: { type: 'string', example: 'walletAddress' },
+                      message: { type: 'string', example: 'walletAddress is required' },
+                    },
+                    required: ['field', 'message'],
+                  },
                 },
-                required: ['field', 'message'],
               },
             },
-          },
-          required: ['error', 'message', 'code'],
+          ],
         },
+        // ── Shared base schema (imported from shared-components) ──
+        ...sharedComponents.schemas,
         RateLimitResponse: {
           allOf: [{ $ref: '#/components/schemas/ErrorResponse' }],
           example: {
@@ -122,16 +113,75 @@ export const swaggerSpec = swaggerJSDoc({
           additionalProperties: false,
         },
 
+        LeaderboardEntry: {
+          type: 'object',
+          properties: {
+            rank: { type: 'integer' },
+            userId: { type: 'string' },
+            walletAddress: { type: 'string' },
+            totalEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            totalPredictions: { type: 'integer' },
+            accuracy: { type: 'number' },
+            modeStats: {
+              type: 'object',
+              properties: {
+                upDown: {
+                  type: 'object',
+                  properties: {
+                    wins: { type: 'integer' },
+                    losses: { type: 'integer' },
+                    earnings: { $ref: '#/components/schemas/MoneyAmount' },
+                    accuracy: { type: 'number' },
+                  },
+                },
+                legends: {
+                  type: 'object',
+                  properties: {
+                    wins: { type: 'integer' },
+                    losses: { type: 'integer' },
+                    earnings: { $ref: '#/components/schemas/MoneyAmount' },
+                    accuracy: { type: 'number' },
+                  },
+                },
+              },
+            },
+          },
+        },
         LeaderboardResponse: {
           type: 'object',
           properties: {
-            leaderboard: { type: 'array', items: { type: 'object' } },
-            userPosition: { type: 'object', nullable: true },
+            leaderboard: { type: 'array', items: { $ref: '#/components/schemas/LeaderboardEntry' } },
+            userPosition: { $ref: '#/components/schemas/LeaderboardEntry', nullable: true },
             totalUsers: { type: 'number' },
             lastUpdated: { type: 'string' },
           },
           required: ['leaderboard', 'totalUsers', 'lastUpdated'],
           additionalProperties: true,
+        },
+        UserBalanceResponse: {
+          type: 'object',
+          properties: {
+            balance: { $ref: '#/components/schemas/MoneyAmount' },
+          },
+          required: ['balance'],
+        },
+        UserStatsResponse: {
+          type: 'object',
+          properties: {
+            totalPredictions: { type: 'integer' },
+            correctPredictions: { type: 'integer' },
+            totalEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            upDownEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            legendsEarnings: { $ref: '#/components/schemas/MoneyAmount' },
+            pendingWinnings: { $ref: '#/components/schemas/MoneyAmount' },
+          },
+        },
+        PredictionResponse: {
+          type: 'object',
+          properties: {
+            amount: { $ref: '#/components/schemas/MoneyAmount' },
+            payout: { $ref: '#/components/schemas/NullableMoneyAmount' },
+          },
         },
 
         RoundResponse: {
@@ -140,13 +190,13 @@ export const swaggerSpec = swaggerJSDoc({
             id: { type: 'string' },
             mode: { type: 'string', enum: ['UP_DOWN', 'LEGENDS'] },
             status: { type: 'string', enum: ['PENDING', 'ACTIVE', 'LOCKED', 'RESOLVED', 'CANCELLED'] },
-            startPrice: { type: 'string', description: 'Decimal string' },
-            endPrice: { type: 'string', nullable: true, description: 'Decimal string (set on resolution)' },
+            startPrice: { $ref: '#/components/schemas/MoneyAmount' },
+            endPrice: { allOf: [{ $ref: '#/components/schemas/NullableMoneyAmount' }], description: 'Decimal string (set on resolution)' },
             startTime: { type: 'string', format: 'date-time' },
             endTime: { type: 'string', format: 'date-time' },
             resolvedAt: { type: 'string', format: 'date-time', nullable: true, description: 'Timestamp of resolution' },
-            poolUp: { type: 'string', description: 'Decimal string' },
-            poolDown: { type: 'string', description: 'Decimal string' },
+            poolUp: { $ref: '#/components/schemas/MoneyAmount' },
+            poolDown: { $ref: '#/components/schemas/MoneyAmount' },
             sorobanRoundId: { type: 'string', nullable: true },
             priceRanges: {
               type: 'array',
@@ -164,7 +214,7 @@ export const swaggerSpec = swaggerJSDoc({
           properties: {
             min: { type: 'number', description: 'Inclusive lower bound of the range' },
             max: { type: 'number', description: 'Exclusive upper bound of the range (inclusive only for the final configured range)' },
-            pool: { type: 'number', description: 'Current total staked amount in this range', example: 125.5 },
+            pool: { $ref: '#/components/schemas/MoneyAmount' },
           },
           required: ['min', 'max'],
           additionalProperties: false,
@@ -187,6 +237,39 @@ export const swaggerSpec = swaggerJSDoc({
           },
           required: ['success', 'data'],
         },
+        MultiAssetPriceResponse: {
+          type: 'object',
+          description:
+            'Multi-asset spot prices from GET /api/prices. Not interchangeable with XlmOraclePriceResponse from GET /api/price.',
+          properties: {
+            BTC: { type: 'number', example: 67420.12 },
+            ETH: { type: 'number', example: 3241.55 },
+            XLM: { type: 'number', example: 0.2891 },
+            stale: { type: 'boolean', example: false },
+            lastUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+          required: ['BTC', 'ETH', 'XLM', 'stale', 'lastUpdatedAt'],
+        },
+        XlmOraclePriceResponse: {
+          type: 'object',
+          description:
+            'Single-asset XLM oracle snapshot from GET /api/price. Not interchangeable with MultiAssetPriceResponse from GET /api/prices.',
+          properties: {
+            asset: { type: 'string', enum: ['XLM'], example: 'XLM' },
+            price_usd: {
+              type: 'string',
+              nullable: true,
+              description: 'XLM/USD as a precise decimal string (null if oracle has no sample yet)',
+              example: '0.28910000',
+            },
+            stale: { type: 'boolean', example: false },
+            provider: { type: 'string', nullable: true, example: 'coingecko' },
+            lastUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
+            source: { type: 'string', nullable: true, example: 'live' },
+            timestamp: { type: 'string', format: 'date-time' },
+          },
+          required: ['asset', 'price_usd', 'stale', 'timestamp'],
+        },
       },
     },
     tags: [
@@ -199,11 +282,17 @@ export const swaggerSpec = swaggerJSDoc({
       { name: 'chat', description: 'Global chat messaging' },
       { name: 'notifications', description: 'User notifications management' },
       { name: 'Admin', description: 'Administrative and operational endpoints' },
+      {
+        name: 'prices',
+        description:
+          'Price feeds. GET /api/price is the XLM oracle; GET /api/prices is the multi-asset ticker — different payloads, not aliases.',
+      },
     ],
   },
   apis: [
-    path.join(process.cwd(), 'src/routes/*.ts'),
-    path.join(process.cwd(), 'src/index.ts'),
+    // Use forward-slash globs so swagger-jsdoc expands on Windows and POSIX.
+    'src/routes/*.ts',
+    'src/index.ts',
   ],
 });
 

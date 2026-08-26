@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { ipKeyGenerator } from 'express-rate-limit';
+import { Request } from 'express';
 import { rateLimitMetricsService, RateLimitMetricsService } from '../services/rate-limit-metrics.service';
 import { getRateLimitCategory } from '../security/rate-limit-endpoints';
 import { rateLimitHitsTotal } from './metrics.middleware';
@@ -11,9 +11,37 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-/** Documented limits for tests and operator reference */
+type RateLimitPolicy = {
+  windowMs: number;
+  max: number;
+  message: string;
+};
+
+/** Documented limits for operators, tests, and README. Demo defaults; override via env. */
 export const RATE_LIMIT_POLICIES = {
-  predictionSubmit: { windowMs: 60 * 1000, max: 10, name: 'prediction/submit' },
+  api: {
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_API_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_API_MAX, 100),
+    message:
+      'Too many requests from this IP. Please slow down and try again shortly.',
+  },
+  write: {
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_WRITE_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_WRITE_MAX, 20),
+    message:
+      'Too many write requests from this IP. Please wait before submitting again.',
+  },
+  bet: {
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_BET_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_BET_MAX, 5),
+    message:
+      'Too many bet submissions from this IP. Please wait before placing another bet.',
+  },
+  predictionSubmit: {
+    windowMs: parsePositiveInt(process.env.RATE_LIMIT_PREDICTION_WINDOW_MS, 60 * 1000),
+    max: parsePositiveInt(process.env.RATE_LIMIT_PREDICTION_MAX, 10),
+    name: 'prediction/submit',
+  },
   predictionBatchSubmit: {
     windowMs: parsePositiveInt(process.env.BATCH_PREDICTION_RATE_LIMIT_WINDOW_MS, 60 * 1000),
     max: parsePositiveInt(process.env.BATCH_PREDICTION_RATE_LIMIT_MAX, 3),
@@ -27,7 +55,7 @@ export const RATE_LIMIT_POLICIES = {
 } as const;
 
 /**
- * Factory function to create rate limiters with consistent configuration
+ * Factory function to create rate limiters with consistent 429 shape.
  */
 function createRateLimiter(opts: {
   windowMs: number;
@@ -35,16 +63,20 @@ function createRateLimiter(opts: {
   message: string;
   name: string;
   keyGenerator?: (req: any) => string;
+  skip?: (req: Request) => boolean;
 }) {
   return rateLimit({
     windowMs: opts.windowMs,
     max: opts.max,
-    keyGenerator: opts.keyGenerator
-      ? (req) => opts.keyGenerator!(req)
-      : (req) => ipKeyGenerator(req.ip || 'unknown'),
-    message: { error: 'Too Many Requests', message: opts.message },
+    // Do not pass `ipKeyGenerator` as keyGenerator: that helper takes an IP
+    // string, not a Request. Using it as a keyGenerator stores the request
+    // object as the Map key, so every request looks unique and never 429s.
+    // Omit keyGenerator to use express-rate-limit's default (IP + IPv6 subnet).
+    ...(opts.keyGenerator ? { keyGenerator: opts.keyGenerator } : {}),
+    message: { error: 'Too Many Requests', message: opts.message, retryAfter: Math.ceil(opts.windowMs / 1000) },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: opts.skip,
     validate: { keyGeneratorIpFallback: false },
     handler: (req, res) => {
       const key = opts.keyGenerator ? opts.keyGenerator(req) : (req.ip || 'unknown');
@@ -62,10 +94,29 @@ function createRateLimiter(opts: {
         userId: userId,
       }).catch(err => logger.error(`Failed to record hit for ${opts.name}:`, err));
 
-      res.status(429).json({ error: 'Too Many Requests', message: opts.message });
+      res.status(429).json({ error: 'Too Many Requests', message: opts.message, retryAfter: Math.ceil(opts.windowMs / 1000) });
     },
   });
 }
+
+// Baseline per-IP limit for all public `/api` traffic
+export const apiRateLimiter = createRateLimiter({
+  ...RATE_LIMIT_POLICIES.api,
+  name: 'api/general',
+});
+
+// Stricter per-IP limit for mutation methods
+export const writeRateLimiter = createRateLimiter({
+  ...RATE_LIMIT_POLICIES.write,
+  name: 'api/write',
+  skip: (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method),
+});
+
+// Strictest per-IP limit for bet submissions
+export const betRateLimiter = createRateLimiter({
+  ...RATE_LIMIT_POLICIES.bet,
+  name: 'api/bet',
+});
 
 // Authentication endpoints
 export const challengeRateLimiter = createRateLimiter({
@@ -107,10 +158,7 @@ export const predictionRateLimiter = createRateLimiter({
   name: RATE_LIMIT_POLICIES.predictionSubmit.name,
 });
 
-/**
- * Stricter limit for batch prediction submission (up to 50 predictions per request).
- * Tunable via BATCH_PREDICTION_RATE_LIMIT_MAX and BATCH_PREDICTION_RATE_LIMIT_WINDOW_MS.
- */
+// Stricter limit for batch prediction submission
 export const batchPredictionRateLimiter = createRateLimiter({
   windowMs: RATE_LIMIT_POLICIES.predictionBatchSubmit.windowMs,
   max: RATE_LIMIT_POLICIES.predictionBatchSubmit.max,
@@ -120,9 +168,7 @@ export const batchPredictionRateLimiter = createRateLimiter({
   name: RATE_LIMIT_POLICIES.predictionBatchSubmit.name,
 });
 
-/**
- * Rate limit for batch leaderboard lookups (per user).
- */
+// Rate limit for batch leaderboard lookups (per user)
 export const batchLeaderboardRateLimiter = createRateLimiter({
   windowMs: RATE_LIMIT_POLICIES.leaderboardBatch.windowMs,
   max: RATE_LIMIT_POLICIES.leaderboardBatch.max,

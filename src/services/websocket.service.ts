@@ -8,7 +8,9 @@ import type {
   ServerToClientEvents,
   TypedServer,
 } from '../types/socket-events';
-import type { ChatMessage } from '../types/chat.types';
+import { serializeRoundUpdatePayload } from '../serializers/monetary.serializer';
+
+export type { BetAcceptedPayload };
 
 /**
  * Centralized event names so DLQ replay can map a stored `eventName` back
@@ -214,19 +216,7 @@ export class WebSocketService {
    * Emit real-time round status and pool updates to general and round-specific rooms
    */
   emitRoundUpdate(round: any): void {
-    const payload = {
-      id: round.id,
-      mode: round.mode,
-      status: round.status,
-      startTime: round.startTime?.toISOString?.() || round.startTime,
-      endTime: round.endTime?.toISOString?.() || round.endTime,
-      startPrice: round.startPrice ? Number(round.startPrice) : null,
-      endPrice: round.endPrice ? Number(round.endPrice) : null,
-      poolUp: round.poolUp ? Number(round.poolUp) : 0,
-      poolDown: round.poolDown ? Number(round.poolDown) : 0,
-      priceRanges: round.priceRanges,
-      resolvedAt: round.resolvedAt?.toISOString?.() || round.resolvedAt,
-    };
+    const payload = serializeRoundUpdatePayload(round as Record<string, unknown>);
 
     // Broadcast to general 'round' room
     this.safeEmit({ room: 'round', event: WebSocketEvents.RoundUpdate, payload });

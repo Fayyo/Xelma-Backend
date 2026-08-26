@@ -10,6 +10,9 @@ import {
   decEq,
   decFixed,
   toDecimalString,
+  serializeMoney,
+  serializeNullableMoney,
+  ZERO_MONEY,
 } from "../utils/decimal.util";
 import { Decimal } from "@prisma/client/runtime/library";
 
@@ -219,5 +222,18 @@ describe("Decimal String Serialization (API Boundary)", () => {
     expect(toDecimalString(decAdd(0.1, 0.2))).toBe("0.30000000");
     expect(toDecimalString(decMul(7.77777777, 1))).toBe("7.77777777");
     expect(toDecimalString(decDiv(1, 3))).toBe("0.33333333");
+  });
+
+  it("serializeMoney always returns an 8-dp string, including zero", () => {
+    expect(serializeMoney(null)).toBe(ZERO_MONEY);
+    expect(serializeMoney(undefined)).toBe(ZERO_MONEY);
+    expect(serializeMoney(0)).toBe("0.00000000");
+    expect(serializeMoney("50")).toBe("50.00000000");
+  });
+
+  it("serializeNullableMoney keeps unset payouts as null", () => {
+    expect(serializeNullableMoney(null)).toBeNull();
+    expect(serializeNullableMoney(undefined)).toBeNull();
+    expect(serializeNullableMoney("1.5")).toBe("1.50000000");
   });
 });

@@ -45,6 +45,17 @@ export interface PredictionPlacedPayload {
   priceRange: unknown;
 }
 
+/** Payload for live bet acceptance broadcasts (Issue #376). */
+export interface BetAcceptedPayload {
+  roundId?: string;
+  address: string;
+  amount: string;
+  side?: 'UP' | 'DOWN';
+  mode: 'UP_DOWN' | 'PRECISION';
+  state: string;
+  txHash?: string;
+}
+
 export interface RoundResolvedPayload {
   id: string;
   status: string;
@@ -61,26 +72,16 @@ export interface PriceUpdatePayload {
   timestamp: string;
 }
 
-export interface BetAcceptedPayload {
-  roundId?: string;
-  address: string;
-  amount: number;
-  side?: 'UP' | 'DOWN';
-  mode: 'UP_DOWN' | 'PRECISION';
-  state: string;
-  txHash?: string;
-}
-
 export interface RoundUpdatePayload {
   id: string;
   mode: string;
   status: string;
   startTime: string | null;
   endTime: string | null;
-  startPrice: number | null;
-  endPrice: number | null;
-  poolUp: number;
-  poolDown: number;
+  startPrice: string | null;
+  endPrice: string | null;
+  poolUp: string;
+  poolDown: string;
   priceRanges: unknown;
   resolvedAt: string | null;
 }
