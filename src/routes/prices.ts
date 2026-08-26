@@ -27,7 +27,7 @@ const router = Router();
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/PriceData'
+ *                   $ref: '#/components/schemas/PriceResponse'
  *       503:
  *         description: Price service unavailable (no cache)
  *         content:

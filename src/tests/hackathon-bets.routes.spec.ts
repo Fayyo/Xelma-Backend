@@ -42,7 +42,7 @@ describe("Hackathon Bet Routes - Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
+        data: { message: "Bet recorded (stub)" },
       });
     });
 
@@ -110,7 +110,7 @@ describe("Hackathon Bet Routes - Zod validation", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Precision bet recorded (stub)",
+        data: { message: "Precision bet recorded (stub)" },
       });
     });
 

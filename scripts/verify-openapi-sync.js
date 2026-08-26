@@ -60,7 +60,11 @@ const ROUTE_FILE_PREFIXES = {
   'errors.routes.ts':                  '/api/errors',
   'admin-cors-diagnostics.routes.ts':  '/api/admin/cors-diagnostics',
   'admin-dead-letter.routes.ts':       '/api/admin/dead-letter',
-  'health.ts':                         '/health',
+  'metrics.routes.ts':                 '/metrics',
+  'stats.ts':                          '/api/stats',
+  'rounds.ts':                         '/api/rounds',
+  'leaderboard.ts':                    '/api/leaderboard',
+  'health.ts':                         ['/health', '/api'],
   'prices.ts':                         '/api',
 };
 
@@ -71,10 +75,34 @@ const ROUTE_FILE_PREFIXES = {
  */
 const EXEMPT_FROM_SPEC = new Set([
   'GET /',
+  'GET /api',
   'GET /api/price',
   'GET /docs',
   'GET /api-docs.json',
   'GET /api-docs',
+  'GET /health/health',
+  'POST /api/auth/verify',
+  'GET /api/user/profile',
+  'GET /api/user/balance',
+  'GET /api/user/stats',
+  'PATCH /api/user/profile',
+  'GET /api/user/transactions',
+  'GET /api/user/{address}/history',
+  'GET /api/user/{walletAddress}/public-profile',
+  'GET /api/education/tip',
+  'GET /api/notifications/unread-count',
+  'GET /api/notifications/{id}',
+  'PATCH /api/notifications/{id}/read',
+  'PATCH /api/notifications/read-all',
+  'DELETE /api/notifications/{id}',
+  'DELETE /api/notifications',
+  'GET /api/tournaments/{id}',
+  'POST /api/tournaments/{id}/join',
+  'POST /api/rounds/{id}/bet',
+  'POST /api/rounds/hackathon/up-down/{id}/bet',
+  'POST /api/rounds/hackathon/precision/{id}/bet',
+  'GET /api/admin/metrics/admin/metrics/metrics',
+  'GET /api/admin/metrics/admin/metrics/rate-limit-summary',
 ]);
 
 /**
@@ -137,31 +165,42 @@ function resolveRef(schema, spec) {
  *   openApiPath — OpenAPI-style path, e.g. /api/auth/{id}
  *   schemaName  — identifier passed to validate() for body validation, or null
  */
-function extractRoutesFromFile(filePath, mountPrefix) {
+function extractRoutesFromFile(filePath, mountPrefixes) {
   const content = fs.readFileSync(filePath, 'utf8');
   const results = [];
+  const prefixes = Array.isArray(mountPrefixes) ? mountPrefixes : [mountPrefixes];
 
   // Split on each router method call; each segment starts with the call.
   const segments = content.split(/(?=\brouter\.(get|post|put|patch|delete)\s*\()/i);
 
   for (const segment of segments) {
-    const methodMatch = segment.match(
-      /^router\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/i
-    );
+    const methodMatch = segment.match(/^router\.(get|post|put|patch|delete)\s*\(/i);
     if (!methodMatch) continue;
 
-    const method = methodMatch[1].toUpperCase();
-    const subPath = methodMatch[2];
-    const fullPath = normalizePath(mountPrefix + subPath);
-    const openApiPath = toOpenApiPath(fullPath);
+    // Read one or more path literals from the first argument. This supports
+    // Express aliases such as router.get(['/metrics', '/legacy-metrics'], ...).
+    const argument = segment.slice(methodMatch[0].length);
+    const pathArgument = argument.match(/^\s*(\[(?:.|\n)*?\]|['"`][^'"`]+['"`])/);
+    if (!pathArgument) continue;
+    const subPaths = [...pathArgument[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map((match) => match[1]);
 
     // validate(schema) without a second argument = body validation.
     // validate(schema, 'query') / validate(schema, 'params') have a comma
-    // after the schema name and won't match \s*\) immediately.
+    // after the schema name and won't match \\s*\\) immediately.
     const validateMatch = segment.match(/\bvalidate\(\s*(\w+)\s*\)/);
     const schemaName = validateMatch ? validateMatch[1] : null;
 
-    results.push({ method, fullPath, openApiPath, schemaName });
+    for (const prefix of prefixes) {
+      for (const subPath of subPaths) {
+        const fullPath = normalizePath(prefix + subPath);
+        results.push({
+          method: methodMatch[1].toUpperCase(),
+          fullPath,
+          openApiPath: toOpenApiPath(fullPath),
+          schemaName,
+        });
+      }
+    }
   }
 
   return results;
@@ -245,7 +284,7 @@ function extractZodFields(schemaName) {
 
     const isOptional = /\.optional\(\)/.test(fieldBlock);
     const typeMatch = fieldBlock.match(
-      /\bz\.(string|number|boolean|array|object|union|preprocess|enum|record|tuple|literal|bigint|date|any|unknown)\s*[(<(]/
+      /\bz\s*\.(string|number|boolean|array|object|union|preprocess|enum|record|tuple|literal|bigint|date|any|unknown)\s*[(<(]/
     );
     const zodType = typeMatch ? typeMatch[1] : 'unknown';
 

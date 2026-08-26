@@ -27,7 +27,7 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [amount, side]
+ *             required: [address, amount, side]
  *             properties:
  *               address: { type: string, description: "Optional; must match JWT wallet when provided" }
  *               amount: { type: number }
@@ -130,7 +130,7 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [amount, predictedPrice]
+ *             required: [address, amount, predictedPrice]
  *             properties:
  *               address: { type: string, description: "Optional; must match JWT wallet when provided" }
  *               amount: { type: number }

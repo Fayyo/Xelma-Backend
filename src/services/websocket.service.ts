@@ -4,6 +4,7 @@ import deadLetterQueueService from './dead-letter-queue.service';
 import { websocketEmitsTotal } from '../metrics/application.metrics';
 import { prisma } from '../lib/prisma';
 import type {
+  BetAcceptedPayload,
   ServerToClientEvents,
   TypedServer,
 } from '../types/socket-events';
@@ -26,24 +27,13 @@ export const WebSocketEvents = {
   PriceUpdateV2: 'price_update',
 } as const;
 
-export type WebSocketEventName =
-  (typeof WebSocketEvents)[keyof typeof WebSocketEvents];
-
 type EventPayloadMap = {
   [K in keyof ServerToClientEvents]: Parameters<ServerToClientEvents[K]>[0];
 };
 
-/** Payload for live bet acceptance broadcasts (Issue #376). */
-export interface BetAcceptedPayload {
-  roundId?: string;
-  address: string;
-  amount: number;
-  side?: 'UP' | 'DOWN';
-  mode: 'UP_DOWN' | 'PRECISION';
-  state: string;
-  txHash?: string;
-}
+type WebSocketEventName = keyof EventPayloadMap;
 
+/** Payload for live bet acceptance broadcasts (Issue #376). */
 interface SafeEmitInput<E extends WebSocketEventName> {
   room: string;
   event: E;

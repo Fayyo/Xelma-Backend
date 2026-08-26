@@ -20,6 +20,13 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = DUMMY_DB_URL;
 }
 
+// Unit tests use in-memory repositories and the lightweight Prisma mock. CI
+// integration jobs provide a real DATABASE_URL and leave TEST_TYPE unset.
+if (process.env.TEST_TYPE === 'unit' && !process.env.DATA_STORE) {
+  process.env.DATA_STORE = 'memory';
+}
+
+
 // Global helper to check if a real DB is available
 global.hasDb = Boolean(
   process.env.DATABASE_URL && 
