@@ -118,9 +118,12 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual(
         expect.objectContaining({
-          BTC: expect.any(Number),
-          ETH: expect.any(Number),
-          XLM: expect.any(Number),
+          success: true,
+          data: expect.objectContaining({
+            BTC: expect.any(Number),
+            ETH: expect.any(Number),
+            XLM: expect.any(Number),
+          }),
         })
       );
     });

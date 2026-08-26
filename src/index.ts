@@ -196,6 +196,7 @@ export function createApp(): Express {
     v1Router.use('/errors', errorsRoutes);
     v1Router.use('/admin/cors-diagnostics', corsDiagnosticsRoutes);
     v1Router.use('/admin/dead-letter', deadLetterRoutes);
+    v1Router.use('/', pricesRoutes);
     app.use('/api/v1', v1Router);
 
     // Deprecation headers for legacy unversioned /api/* paths
