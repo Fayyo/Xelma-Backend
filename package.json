@@ -11,6 +11,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "lint": "tsc --noEmit",
     "scorecard": "node scripts/production-readiness-scorecard.js",
+    "check:bindings": "node scripts/install-bindings.js --check",
     "test": "jest",
     "test:unit": "jest --selectProjects unit",
     "test:unit:coverage": "jest --selectProjects unit --coverage",
