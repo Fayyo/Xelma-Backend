@@ -1,5 +1,7 @@
 import type { Round as SorobanRound } from "@tevalabs/xelma-bindings";
 import { RoundMode } from "@tevalabs/xelma-bindings";
+import { serializeMoney } from "./decimal.util";
+import { serializeRound } from "../serializers/monetary.serializer";
 
 const PRICE_SCALE = 10_000;
 const STROOP_SCALE = 10_000_000;
@@ -11,9 +13,9 @@ export interface MappedActiveRound {
   sorobanRoundId: string;
   mode: "UP_DOWN" | "LEGENDS";
   status: "ACTIVE";
-  startPrice: number;
-  poolUp: number;
-  poolDown: number;
+  startPrice: string;
+  poolUp: string;
+  poolDown: string;
   startLedger: number;
   betEndLedger: number;
   endLedger: number;
@@ -26,10 +28,10 @@ export interface FrontendRoundCard {
   asset: string;
   mode: string;
   status: string;
-  startPrice: number;
-  poolUp: number;
-  poolDown: number;
-  totalPool: number;
+  startPrice: string;
+  poolUp: string;
+  poolDown: string;
+  totalPool: string;
   predictionCount: number;
   closesAt: string;
   source: "live" | "mock";
@@ -39,14 +41,14 @@ export interface FrontendRoundCard {
     endsAt: string;
   };
   priceData: {
-    startPrice: number;
-    currentPrice: number;
+    startPrice: string;
+    currentPrice: string;
     change24h?: number;
   };
   poolValues: {
-    upPool: number;
-    downPool: number;
-    totalPool: number;
+    upPool: string;
+    downPool: string;
+    totalPool: string;
   };
   predictionMetadata: {
     predictionCount: number;
@@ -74,9 +76,9 @@ export function mapSorobanActiveRound(round: SorobanRound): MappedActiveRound {
     sorobanRoundId: String(roundId),
     mode,
     status: "ACTIVE",
-    startPrice: toNumber(round.price_start) / PRICE_SCALE,
-    poolUp: toNumber(round.pool_up) / STROOP_SCALE,
-    poolDown: toNumber(round.pool_down) / STROOP_SCALE,
+    startPrice: serializeMoney(toNumber(round.price_start) / PRICE_SCALE),
+    poolUp: serializeMoney(toNumber(round.pool_up) / STROOP_SCALE),
+    poolDown: serializeMoney(toNumber(round.pool_down) / STROOP_SCALE),
     startLedger: Number(round.start_ledger),
     betEndLedger: Number(round.bet_end_ledger),
     endLedger: Number(round.end_ledger),
@@ -86,10 +88,17 @@ export function mapSorobanActiveRound(round: SorobanRound): MappedActiveRound {
 }
 
 export function mapDatabaseActiveRound(round: Record<string, unknown>): Record<string, unknown> {
-  return {
+  return serializeRound({
     ...round,
     source: "database" as const,
-  };
+  });
+}
+
+export function mapMockActiveRound(round: Record<string, unknown>): Record<string, unknown> {
+  return serializeRound({
+    ...round,
+    source: "mock" as const,
+  });
 }
 
 const MOCK_ASSETS = [
@@ -105,7 +114,7 @@ function buildMockFrontendCard(asset: string, index: number): FrontendRoundCard 
   const downPool = asset === "BTC" ? 1400 : asset === "ETH" ? 950 : 150;
   const totalPool = upPool + downPool;
 
-  return {
+  return serializeRound({
     id: `${asset.toLowerCase()}-round-${index + 1}`,
     asset,
     mode: "updown",
@@ -135,20 +144,20 @@ function buildMockFrontendCard(asset: string, index: number): FrontendRoundCard 
       predictionCount: asset === "BTC" ? 4 : asset === "ETH" ? 7 : 2,
       canPredict: true,
     },
-  };
+  }) as unknown as FrontendRoundCard;
 }
 
 function buildLiveFrontendCard(round: SorobanRound | null): FrontendRoundCard | null {
   if (!round) return null;
 
   const mappedRound = mapSorobanActiveRound(round);
-  const startPrice = mappedRound.startPrice;
+  const startPrice = toNumber(round.price_start) / PRICE_SCALE;
   const currentPrice = startPrice * 1.01;
-  const upPool = mappedRound.poolUp;
-  const downPool = mappedRound.poolDown;
+  const upPool = toNumber(round.pool_up) / STROOP_SCALE;
+  const downPool = toNumber(round.pool_down) / STROOP_SCALE;
   const totalPool = upPool + downPool;
 
-  return {
+  return serializeRound({
     id: mappedRound.id,
     asset: "XLM",
     mode: mappedRound.mode === "LEGENDS" ? "precision" : "updown",
@@ -182,7 +191,7 @@ function buildLiveFrontendCard(round: SorobanRound | null): FrontendRoundCard | 
     },
     sorobanRoundId: mappedRound.sorobanRoundId,
     isSoroban: mappedRound.isSoroban,
-  };
+  }) as unknown as FrontendRoundCard;
 }
 
 export function mapSorobanRoundToFrontendCards(round: SorobanRound | null): FrontendRoundCard[] {

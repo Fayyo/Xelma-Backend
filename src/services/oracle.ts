@@ -11,8 +11,7 @@ import {
   OracleHealthSnapshot,
 } from '../metrics/application.metrics';
 import { PriceProvider } from './price-provider.interface';
-import { CoinGeckoProvider } from './providers/coingecko.provider';
-import { CoinCapProvider } from './providers/coincap.provider';
+import { createDefaultProviders } from './providers';
 
 interface ProviderEntry {
   provider: PriceProvider;
@@ -32,28 +31,16 @@ class PriceOracle {
   private _running = false;
   private lastUpdatedAt: Date | null = null;
   private activeSource: string | null = null;
-  private readonly REQUEST_TIMEOUT = 5000;
-  private readonly MAX_RETRIES = 1;
 
   private constructor() {
-    this.providerChain = [
-      {
-        provider: new CoinGeckoProvider(config.oracle.coinGeckoUrl, this.REQUEST_TIMEOUT),
-        breaker: new CircuitBreaker({
-          name: 'coingecko-price-oracle',
-          failureThreshold: 3,
-          openBackoffMs: 30_000,
-        }),
-      },
-      {
-        provider: new CoinCapProvider(config.oracle.coinCapUrl, this.REQUEST_TIMEOUT),
-        breaker: new CircuitBreaker({
-          name: 'coincap-price-oracle',
-          failureThreshold: 3,
-          openBackoffMs: 30_000,
-        }),
-      },
-    ];
+    this.providerChain = createDefaultProviders(this.REQUEST_TIMEOUT).map((provider) => ({
+      provider,
+      breaker: new CircuitBreaker({
+        name: `${provider.name}-price-oracle`,
+        failureThreshold: 3,
+        openBackoffMs: 30_000,
+      }),
+    }));
   }
 
   public static getInstance(): PriceOracle {

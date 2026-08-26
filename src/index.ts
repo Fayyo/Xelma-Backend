@@ -1,87 +1,47 @@
 const nodeMajorVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajorVersion < 22 && process.env.NODE_ENV !== 'test') {
-  console.error(`🔥 CRITICAL ERROR: Application startup failed.`);
-  console.error(`Node.js v22.x or higher is required. You are running v${process.version}.`);
-  console.error(`Please upgrade Node.js to avoid local vs Render mismatches.`);
+  logger.error('Application startup failed: Node.js v22.x or higher is required', {
+    nodeVersion: process.version,
+    hint: 'Upgrade Node.js to avoid local vs Render mismatches.',
+  });
   process.exit(1);
 }
 
-import express, { Express, Request, Response, NextFunction } from 'express';
-import cors from 'cors';
+import { Express } from 'express';
 import dotenv from 'dotenv';
 import { assertPreflightOrExit } from './config/preflight';
 import { createServer, Server as HttpServer } from 'http';
-import authRoutes from './routes/auth.routes';
-import userRoutes from './routes/user.routes';
-import roundsRoutes from './routes/rounds.routes';
-import betsRoutes from './routes/bets.routes';
-import predictionsRoutes from './routes/predictions.routes';
-import educationRoutes from './routes/education.routes';
-import leaderboardRoutes from './routes/leaderboard.routes';
-import notificationsRoutes from './routes/notifications.routes';
 import priceOracle from './services/oracle';
-import sorobanService from './services/soroban.service';
 import websocketService from './services/websocket.service';
 import schedulerService from './services/scheduler.service';
 import roundSchedulerService from './services/round-scheduler.service';
 import oracleService from './services/oracle.service';
 import logger from './utils/logger';
 import { validateVendoredBindings } from './utils/bindings-validator';
-import { errorHandler } from './middleware/errorHandler.middleware';
 import config from './config';
-import { metricsMiddleware } from './middleware/metrics.middleware';
-import { requestIdMiddleware } from './middleware/requestId.middleware';
-import metricsRoutes from './routes/metrics.routes';
-import adminMetricsRoutes from './routes/admin-metrics.routes';
-import errorsRoutes from './routes/errors.routes';
-import corsDiagnosticsRoutes from './routes/admin-cors-diagnostics.routes';
-import deadLetterRoutes from './routes/admin-dead-letter.routes';
-import healthRoutes from './routes/health';
-import chatRoutes from './routes/chat.routes';
-import tournamentsRoutes from './routes/tournaments.routes';
-import pricesRoutes from './routes/prices';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from './docs/openapi';
+import { createApp as createAppFromFactory, AppFeatures } from './app-factory';
+// Route and middleware imports moved to src/app-factory.ts; only the Soroban
+// env resolver is still used here, by the startup log below.
+import {
+  formatResolvedSorobanConfigForLog,
+  resolveSorobanEnvVars,
+} from './config/env';
 import { initializeSocket, closeWebSocket } from './socket';
 import { prisma } from './lib/prisma';
 import path from 'path';
-import { Router } from 'express';
 
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
 dotenv.config({ path: path.resolve(process.cwd(), envFile), override: false });
 dotenv.config({ override: false });
 
 export { getHttpCorsOrigins } from './utils/cors';
-import { getHttpCorsOrigins } from './utils/cors';
-
-/**
- * Apply security headers to every response.
- * Prevents common browser-based attacks without adding helmet as a dependency.
- */
-function securityHeaders(
-   _req: Request,
-   res: Response,
-   next: NextFunction
-): void {
-   res.setHeader('X-Content-Type-Options', 'nosniff');
-   res.setHeader('X-Frame-Options', 'DENY');
-   res.setHeader('X-XSS-Protection', '1; mode=block');
-   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-   res.setHeader('Content-Security-Policy', "default-src 'self'");
-   res.setHeader(
-      'Permissions-Policy',
-      'geolocation=(), camera=(), microphone=()'
-   );
-   next();
-}
 
 const validateEnv = (): void => {
    if (!process.env.JWT_SECRET) {
-      console.error('🔥 CRITICAL ERROR: Application startup failed.');
-      console.error('Missing required environment variable: JWT_SECRET');
-      console.error(
-         'Please configure this securely in your environment before starting the app.'
-      );
+      logger.error('Application startup failed: Missing required environment variable: JWT_SECRET', {
+         variable: 'JWT_SECRET',
+      });
+      logger.error('Please configure this securely in your environment before starting the app.');
       process.exit(1); // 1 indicates a failure/error state
    }
 };
@@ -120,16 +80,31 @@ validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
+logger.info(
+  'Soroban configuration resolved',
+  formatResolvedSorobanConfigForLog(resolveSorobanEnvVars(), {
+    rpcUrl: config.soroban.rpcUrl,
+    network: config.soroban.network,
+  }),
+);
 
 const betStubMode = process.env.BET_STUB_MODE === "true";
 logger.info(`Bet mode: ${betStubMode ? "STUB (no on-chain calls)" : "ON-CHAIN (Soroban)"}`, {
   BET_STUB_MODE: betStubMode,
 });
+logger.info(
+  `Soroban money-path policy: ${config.soroban.failClosed ? "FAIL-CLOSED (abort on chain failure)" : "FAIL-OPEN (DB-only fallback allowed)"}`,
+  { SOROBAN_FAIL_CLOSED: config.soroban.failClosed },
+);
 logger.info('Runtime modes documented at docs/runtime-modes.md');
 
 /**
  * Create and configure the Express app without starting any background
  * jobs or binding to a network port. Safe to import in tests.
+ *
+ * HTTP wiring lives in `src/app-factory.ts` and is shared with the hackathon
+ * entrypoint; this only selects the full feature set. See CONTRIBUTING.md for
+ * the flag matrix.
  */
 export function createApp(): Express {
    const app = express();
@@ -262,6 +237,8 @@ export function createApp(): Express {
    app.use(errorHandler);
 
    return app;
+export function createApp(features?: Partial<AppFeatures>): Express {
+   return createAppFromFactory({ mode: 'full', features }) as Express;
 }
 
 interface ServerHandle {
