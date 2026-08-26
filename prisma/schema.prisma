@@ -68,6 +68,10 @@ enum DispatchStatus {
 enum OutboxEventType {
   NOTIFICATION_CREATE
   WEBSOCKET_EMIT
+  BET_ACCEPTED
+  BET_CONFIRMED
+  BET_RESOLVED
+  BET_FAILED
 }
 
 /// Outbox event status lifecycle:
@@ -119,6 +123,7 @@ model User {
   transactions        Transaction[]
   multiplayerSessions MultiplayerSession[]
   tournamentParticipants TournamentParticipant[]
+  bets                Bet[]
 }
 
 model Tournament {
@@ -203,6 +208,7 @@ model Round {
   updatedAt DateTime @updatedAt
 
   predictions Prediction[]
+  bets        Bet[]
   User        User?        @relation(fields: [userId], references: [id])
   userId      String?
 
@@ -230,6 +236,46 @@ model Prediction {
   @@unique([roundId, userId])
   @@index([userId])
   @@index([roundId])
+}
+
+enum BetStatus {
+  ACCEPTED
+  SUBMITTED
+  CONFIRMED
+  RESOLVED
+  FAILED
+}
+
+enum BetMode {
+  UP_DOWN
+  PRECISION
+}
+
+model Bet {
+  id              String     @id @default(uuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roundId         String?
+  round           Round?     @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  mode            BetMode
+  side            PredictionSide?
+  amount          Decimal    @db.Decimal(20, 8)
+  predictedPrice  Decimal?   @db.Decimal(18, 8)
+  status          BetStatus  @default(ACCEPTED)
+  txHash          String?    @unique
+  failureReason   String?
+  submittedAt     DateTime?
+  confirmedAt     DateTime?
+  resolvedAt      DateTime?
+  failedAt        DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([roundId])
+  @@index([status])
+  @@index([txHash])
+  @@index([createdAt])
 }
 
 model Notification {

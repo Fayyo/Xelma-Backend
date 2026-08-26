@@ -25,6 +25,14 @@ export interface SorobanHealth {
   failClosed: boolean;
 }
 
+export interface TransactionStatus {
+  confirmed: boolean;
+  successful: boolean;
+  ledger?: number;
+  feeCharged?: number;
+  error?: string;
+}
+
 /**
  * SorobanService handles interaction with the Stellar Soroban smart contracts.
  *
@@ -695,6 +703,84 @@ export class SorobanService {
       durationMs: result.durationMs,
       retriesUsed: result.retriesUsed,
     });
+
+    return result.data!;
+  }
+
+  /**
+   * Checks the status of a transaction by its hash.
+   * Used for reconciliation of stranded SUBMITTED bets.
+   */
+  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+    await this.ensureInitialized();
+
+    const result = await this.callWithBreaker("sorobanGetTransactionStatus", () =>
+      withTimeout(
+        async () => {
+          logger.debug(`Checking Soroban transaction status: ${txHash}`);
+
+          // Use the RPC to get transaction details
+          const rpcUrl = config.soroban.rpcUrl;
+          const response = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'getTransaction',
+              params: { hash: txHash },
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.error) {
+            return {
+              confirmed: false,
+              successful: false,
+              error: data.error.message,
+            };
+          }
+
+          const txResult = data.result;
+          if (!txResult) {
+            return {
+              confirmed: false,
+              successful: false,
+              error: 'Transaction not found',
+            };
+          }
+
+          // Check if transaction is successful (status === "SUCCESS")
+          const status = txResult.status;
+          const successful = status === 'SUCCESS';
+          const confirmed = status !== 'NOT_FOUND' && status !== 'PENDING';
+
+          return {
+            confirmed,
+            successful,
+            ledger: txResult.ledger ? parseInt(txResult.ledger, 10) : undefined,
+            feeCharged: txResult.feeCharged ? parseInt(txResult.feeCharged, 10) : undefined,
+            error: successful ? undefined : txResult.resultXdr ? 'Transaction failed' : undefined,
+          };
+        },
+        {
+          timeoutMs: 10000,
+          operationName: 'sorobanGetTransactionStatus',
+          retries: 1,
+        }
+      ),
+      { confirmed: false, successful: false, error: 'RPC call failed' },
+    );
+
+    if (!result.success) {
+      logger.warn('Failed to get transaction status from Soroban', {
+        txHash,
+        error: result.error?.message,
+        timedOut: result.timedOut,
+      });
+      return { confirmed: false, successful: false, error: result.error?.message ?? 'Unknown error' };
+    }
 
     return result.data!;
   }
