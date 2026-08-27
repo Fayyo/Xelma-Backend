@@ -28,6 +28,7 @@ const integrationTestFiles = [
   "requestId.middleware.spec.ts",
   "requestId.spec.ts",
   "resolution-concurrency.spec.ts",
+  "resolution-fail-closed.spec.ts",
   "round.spec.ts",
   "rounds.routes.spec.ts",
   "round.service.active.spec.ts",
