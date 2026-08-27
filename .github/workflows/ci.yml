@@ -30,6 +30,22 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+  bindings-pin:
+    name: vendored bindings pin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify vendored bindings pin
+        run: npm run check:bindings
+
   scorecard:
     name: production-readiness scorecard
     runs-on: ubuntu-latest
