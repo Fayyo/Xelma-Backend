@@ -5,7 +5,6 @@ import { upDownBetSchema, precisionBetSchema } from '../schemas/bets.schema';
 
 import { getRepositories } from '../repositories';
 import config from '../config';
-import hackathonService from '../services/hackathon.service';
 import sorobanService from '../services/soroban.service';
 import { getMockRounds } from '../data/mockData';
 import { mapSorobanActiveRound } from '../utils/soroban-round.mapper';

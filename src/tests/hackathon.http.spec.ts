@@ -16,10 +16,6 @@ jest.mock('../services/soroban.service', () => ({
 import app from '../app';
 
 describe('Hackathon HTTP Endpoints (Integration)', () => {
-  afterAll(async () => {
-    const { pool } = require('../db/db');
-    await pool.end();
-  });
   describe('GET /api/health', () => {
     it('returns ok status and timestamp', async () => {
       const res = await request(app).get('/api/health');
