@@ -1,0 +1,3 @@
+-- Hackathon tables already exist (created by Drizzle ORM).
+-- This migration registers them with Prisma without modifying the database.
+-- See: https://github.com/TevaLabs/Xelma-Backend/issues/509
