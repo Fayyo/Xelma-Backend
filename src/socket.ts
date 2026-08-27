@@ -441,7 +441,7 @@ export async function initializeSocket(
                walletAddress: walletSnapshot,
                socketId: socket.id,
             })
-            .then(resume => {
+            .then(async resume => {
                // Auto-rejoin rooms the user occupied before the drop. The
                // client also receives the resume payload so it can update
                // local UI state without a round-trip.
@@ -449,6 +449,19 @@ export async function initializeSocket(
                   socket.join(room);
                }
                socket.emit('session:resume', resume as ResumePayload);
+
+               // Issue #555: reconcile DB rooms against the adapter.
+               // If a previous instance crashed between a DB write and an adapter
+               // propagation, the DB may contain stale rooms. We also pick up any
+               // rooms the adapter added (e.g. the auto-joined user room) that are
+               // not yet in the DB.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  userIdSnapshot,
+                  adapterRooms,
+               );
             })
             .catch(err => {
                logger.warn(
@@ -486,14 +499,27 @@ export async function initializeSocket(
          }
 
          const room = roundId ? `round:${roundId}` : 'round';
-          socket.leave(room);
-          logger.info(`Socket ${socket.id} left room: ${room}`);
-          const leftPayload: RoomEventPayload = { room };
-          socket.emit('room:left', leftPayload);
-          if (socket.userId) {
-             void multiplayerSessionService.removeRoom(socket.userId, room);
-          }
-       });
+         socket.leave(room);
+         logger.info(`Socket ${socket.id} left room: ${room}`);
+         const leftPayload: RoomEventPayload = { room };
+         socket.emit('room:left', leftPayload);
+         if (socket.userId) {
+            void multiplayerSessionService.removeRoom(
+               socket.userId,
+               room,
+            ).then(() => {
+               // Issue #555: reconcile DB against adapter after leave to correct
+               // any drift from concurrent operations across instances.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  socket.userId!,
+                  adapterRooms,
+               );
+            });
+         }
+      });
 
       // Join chat room (requires authentication)
       socket.on('join:chat', () => {
@@ -518,7 +544,19 @@ export async function initializeSocket(
          const leftChat: RoomEventPayload = { room: 'chat' };
          socket.emit('room:left', leftChat);
          if (socket.userId) {
-            void multiplayerSessionService.removeRoom(socket.userId, 'chat');
+            void multiplayerSessionService.removeRoom(
+               socket.userId,
+               'chat',
+            ).then(() => {
+               // Issue #555: reconcile after leave to keep DB in sync.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  socket.userId!,
+                  adapterRooms,
+               );
+            });
          }
       });
 
