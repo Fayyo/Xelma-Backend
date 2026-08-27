@@ -29,13 +29,13 @@ export const WebSocketEvents = {
   PriceUpdateV2: 'price_update',
 } as const;
 
-export type WebSocketEventName =
-  (typeof WebSocketEvents)[keyof typeof WebSocketEvents];
-
 type EventPayloadMap = {
   [K in keyof ServerToClientEvents]: Parameters<ServerToClientEvents[K]>[0];
 };
 
+type WebSocketEventName = keyof EventPayloadMap;
+
+/** Payload for live bet acceptance broadcasts (Issue #376). */
 interface SafeEmitInput<E extends WebSocketEventName> {
   room: string;
   event: E;

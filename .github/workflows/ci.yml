@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_ENV: test
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-test-secret-2026
       TEST_TYPE: unit
 
     steps:
@@ -138,7 +138,7 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xelma_ci
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-test-secret-2026
 
     services:
       postgres:
@@ -180,7 +180,7 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xelma_ci
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-test-secret-2026
 
     services:
       postgres:

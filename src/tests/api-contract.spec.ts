@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createApp } from '../app';
 import { setRepositoriesForTests } from '../repositories';
 
-jest.mock('../middleware/rateLimiter', () => ({
+jest.mock('../middleware/rateLimiter.middleware', () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   writeRateLimiter: (_req: any, _res: any, next: any) => next(),
   betRateLimiter: (_req: any, _res: any, next: any) => next(),

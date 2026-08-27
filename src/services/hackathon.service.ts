@@ -150,8 +150,8 @@ export class HackathonService {
   }
 
   async getLeaderboard() {
-    const users = await prisma.mockLeaderboard.findMany({ orderBy: { xp: 'desc' } });
-    return users.slice(0, 10).map((u, index) => ({
+    const users = await (prisma as any).mockLeaderboard.findMany({ orderBy: { xp: 'desc' } });
+    return users.slice(0, 10).map((u: any, index: number) => ({
       rank: index + 1,
       address: u.address,
       totalWins: u.totalWins,
@@ -163,7 +163,8 @@ export class HackathonService {
   }
 
   async getUserStats(address: string) {
-    const existing = await prisma.mockLeaderboard.findUnique({ where: { address } });
+    const mockPrisma = prisma as any;
+    const existing = await mockPrisma.mockLeaderboard.findUnique({ where: { address } });
     if (existing) {
       return {
         address: existing.address,
@@ -186,7 +187,7 @@ export class HackathonService {
       xp: 410,
       rankTitle: 'Rookie',
     };
-    await prisma.mockLeaderboard.create({
+    await mockPrisma.mockLeaderboard.create({
       data: {
         address: defaultUser.address,
         rank: 0,
@@ -209,9 +210,10 @@ export class HackathonService {
     side?: 'UP' | 'DOWN',
     predictedPrice?: number,
   ): Promise<void> {
-    const existing = await prisma.mockLeaderboard.findUnique({ where: { address } });
+    const mockPrisma = prisma as any;
+    const existing = await mockPrisma.mockLeaderboard.findUnique({ where: { address } });
     if (!existing) {
-      await prisma.mockLeaderboard.create({
+      await mockPrisma.mockLeaderboard.create({
         data: {
           address,
           rank: 0,
@@ -226,7 +228,7 @@ export class HackathonService {
       });
     }
 
-    await prisma.mockBet.create({
+    await (prisma as any).mockBet.create({
       data: {
         roundId,
         address,
@@ -266,31 +268,31 @@ export class HackathonService {
       }
     }
 
-    const user = await prisma.mockLeaderboard.findUnique({ where: { address } });
+    const user = await (prisma as any).mockLeaderboard.findUnique({ where: { address } });
     if (user) {
       const newBalance = Math.max(0, user.balance - amount);
-      await prisma.mockLeaderboard.update({
+      await (prisma as any).mockLeaderboard.update({
         where: { address },
         data: { balance: newBalance },
       });
     }
 
-    const round = await prisma.mockRound.findUnique({ where: { id: roundId } });
+    const round = await (prisma as any).mockRound.findUnique({ where: { id: roundId } });
     if (round) {
       if (round.mode === 'updown' && side) {
         if (side === 'UP') {
-          await prisma.mockRound.update({
+          await (prisma as any).mockRound.update({
             where: { id: roundId },
             data: { poolUp: (round.poolUp ?? 0) + amount },
           });
         } else {
-          await prisma.mockRound.update({
+          await (prisma as any).mockRound.update({
             where: { id: roundId },
             data: { poolDown: (round.poolDown ?? 0) + amount },
           });
         }
       } else if (round.mode === 'precision') {
-        await prisma.mockRound.update({
+        await (prisma as any).mockRound.update({
           where: { id: roundId },
           data: {
             totalPool: (round.totalPool ?? 0) + amount,

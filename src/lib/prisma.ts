@@ -17,13 +17,24 @@ function sanitizeDatabaseUrl(raw: string): string {
 }
 
 export const prisma = (() => {
-  if (process.env.NODE_ENV === 'test') {
-    // Minimal mock to satisfy type expectations during unit tests.
+  if (process.env.NODE_ENV === 'test' && process.env.TEST_TYPE === 'unit') {
+    // Prefer a Jest-provided PrismaClient mock so service tests can assert on
+    // model calls; fall back to a dependency-free mock for other unit tests.
+    const MockedPrismaClient = PrismaClient as unknown as {
+      new (): PrismaClient;
+      _isMockFunction?: boolean;
+    };
+    if (typeof MockedPrismaClient === 'function' && MockedPrismaClient._isMockFunction) {
+      return new MockedPrismaClient();
+    }
+
     const mock: Partial<PrismaClient> = {
       idempotencyKey: {
         deleteMany: async () => ({ count: 0 }) as any,
         findUnique: async () => null as any,
         upsert: async () => null as any,
+        create: async () => null as any,
+        updateMany: async () => ({ count: 0 }) as any,
         // Add other model mocks if needed.
       },
       // #391: lightweight in-memory stubs for the hackathon-data models so

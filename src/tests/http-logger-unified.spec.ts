@@ -30,7 +30,7 @@ jest.mock('../services/soroban.service', () => ({
 // every router — including src/routes/rounds.ts, which needs betRateLimiter.
 // An omitted export here surfaces as "Route.post() requires a callback
 // function but got a [object Undefined]" at import time.
-jest.mock('../middleware/rateLimiter', () => {
+jest.mock('../middleware/rateLimiter.middleware', () => {
   const pass = (_req: any, _res: any, next: any) => next();
   return { apiRateLimiter: pass, writeRateLimiter: pass, betRateLimiter: pass };
 });

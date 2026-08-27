@@ -16,6 +16,7 @@ import {
 import {
   challengeRateLimiter,
   connectRateLimiter,
+  authRateLimiter,
 } from "../middleware/rateLimiter.middleware";
 import { validate } from "../middleware/validate.middleware";
 import { challengeSchema, connectSchema } from "../schemas/auth.schema";
@@ -90,7 +91,7 @@ const router = Router();
  */
 router.post(
   "/challenge",
-  challengeRateLimiter,
+  challengeRateLimiter || authRateLimiter,
   validate(challengeSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     const requestId = (req as any).requestId;
@@ -531,7 +532,7 @@ const connectHandler = async (
 
 router.post(
   "/connect",
-  connectRateLimiter,
+  connectRateLimiter || authRateLimiter,
   validate(connectSchema),
   connectHandler,
 );
