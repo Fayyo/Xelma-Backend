@@ -24,10 +24,6 @@ describe('Hackathon HTTP Endpoints (Integration)', () => {
   const hackerWallet = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
   const hackerToken = generateToken('hackathon-http-user', hackerWallet, UserRole.USER);
 
-  afterAll(async () => {
-    const { pool } = require('../db/db');
-    await pool.end();
-  });
   describe('GET /api/health', () => {
     it('returns ok status and timestamp when soroban is initialized', async () => {
       const res = await request(app).get('/api/health');

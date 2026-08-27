@@ -1,7 +1,4 @@
-import { db } from '../db/db';
-import { hackathonUsers, hackathonRounds } from '../db/schema';
-import { eq } from 'drizzle-orm';
-import { decAdd, decSub, toNumber, toDecimal } from '../utils/decimal.util';
+import { toNumber, toDecimal } from '../utils/decimal.util';
 import { prisma } from '../lib/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { BusinessRuleError, ErrorCode } from '../utils/errors';
@@ -237,36 +234,6 @@ export class HackathonService {
         predictedPrice,
       },
     });
-
-    const users = await db.select().from(hackathonUsers).where(eq(hackathonUsers.address, address));
-    if (users.length > 0) {
-      const remaining = decSub(users[0].balance, amount);
-      const newBalance = remaining.lt(0) ? 0 : toNumber(remaining);
-      await db.update(hackathonUsers).set({ balance: newBalance }).where(eq(hackathonUsers.address, address));
-    }
-
-    const rounds = await db.select().from(hackathonRounds).where(eq(hackathonRounds.id, roundId));
-    if (rounds.length > 0) {
-      const round = rounds[0];
-      if (round.mode === 'updown' && side) {
-        if (side === 'UP') {
-          await db.update(hackathonRounds)
-            .set({ poolUp: toNumber(decAdd(round.poolUp, amount)) })
-            .where(eq(hackathonRounds.id, roundId));
-        } else {
-          await db.update(hackathonRounds)
-            .set({ poolDown: toNumber(decAdd(round.poolDown, amount)) })
-            .where(eq(hackathonRounds.id, roundId));
-        }
-      } else if (round.mode === 'precision') {
-        await db.update(hackathonRounds)
-          .set({
-            totalPool: toNumber(decAdd(round.totalPool, amount)),
-            predictionCount: round.predictionCount + 1,
-          })
-          .where(eq(hackathonRounds.id, roundId));
-      }
-    }
 
     const user = await (prisma as any).mockLeaderboard.findUnique({ where: { address } });
     if (user) {

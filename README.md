@@ -153,8 +153,8 @@ The hackathon app and the production app share the same services, but the data b
 | ------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `GET /api/prices`               | CoinGecko API (30 s cache)                    | Static in-memory array (`mockData.prices` in [src/data/mockData.ts](src/data/mockData.ts))                  |
 | `GET /api/price`                | Production XLM oracle providers               | Same oracle path (production app only; not mounted on hackathon)                                            |
-| `GET /api/rounds`               | Drizzle / Postgres (`hackathon_rounds` table) | Same â€” Drizzle is always used for rounds                                                                  |
-| `GET /api/leaderboard`          | Drizzle / Postgres leaderboard table          | In-memory seed (`mockLeaderboard` in [src/data/mockData.ts](src/data/mockData.ts)) when `DATA_STORE=memory` |
+| `GET /api/rounds`               | Prisma / Postgres (`hackathon_rounds` table)  | Same â€” Prisma is always used for rounds                                                                   |
+| `GET /api/leaderboard`          | Prisma / Postgres leaderboard table           | In-memory seed (`mockLeaderboard` in [src/data/mockData.ts](src/data/mockData.ts)) when `DATA_STORE=memory` |
 | `GET /api/stats`                | Prisma / Postgres aggregation                 | `MOCK_PLATFORM_STATS` constants (zero-value defaults)                                                       |
 | `GET /api/health` â†’ `soroban` | Live `soroban.isReady()` flag                 | Same â€” no extra network call; reflects initialization state only                                          |
 
@@ -731,16 +731,15 @@ npm run prisma:migrate
 npx prisma db seed
 ```
 
-#### Migration story (two schemas, one command)
+#### Migration story (one schema, one command)
 
-This project uses **two migration tools against the same PostgreSQL database**:
+This project uses **Prisma as the single migration tool** against the PostgreSQL database:
 
 | Tool        | Owns                                                                                                                       | Migrations live in   | Applied by              |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------- |
-| **Prisma**  | Core schema — users, rounds, predictions, tournaments, etc.                                                                | `prisma/migrations/` | `prisma migrate deploy` |
-| **Drizzle** | Hackathon/demo schema — `hackathon_users`, `hackathon_rounds`, `hackathon_bets` (see [src/db/schema.ts](src/db/schema.ts)) | `drizzle/`           | `drizzle-kit migrate`   |
+| **Prisma**  | Core and hackathon schemas — users, rounds, predictions, tournaments, and mock data tables | `prisma/migrations/` | `prisma migrate deploy` |
 
-You never run those two commands by hand. **`npm run db:migrate` applies both, in order** (Prisma first, then Drizzle), and `npm run db:prepare` is `prisma generate` followed by `db:migrate`. This one command is exactly what CI (`.github/workflows/ci.yml`) and the deploy workflow run, so local, CI, and production stay identical. When you change [prisma/schema.prisma](prisma/schema.prisma) use `npm run prisma:migrate`; when you change [src/db/schema.ts](src/db/schema.ts) generate a Drizzle migration with `npx drizzle-kit generate` and commit the new file under `drizzle/`.
+`npm run db:migrate` applies all committed Prisma migrations, and `npm run db:prepare` generates the Prisma client before applying them. These are the same commands used by CI and deploy workflows, keeping local, CI, and production setup identical. When you change [prisma/schema.prisma](prisma/schema.prisma), use `npm run prisma:migrate`.
 
 > **Note**: Never commit your `.env` file. It contains sensitive credentials.
 
@@ -1370,8 +1369,7 @@ At minimum, migration PRs should include:
 | `node dist/index.js`            | Run production full backend (Prisma, Soroban, schedulers, WebSocket); use this command in production Render profile                                                                                                   |
 | `npm run prisma:migrate`        | Create/apply a Prisma dev migration for the core schema                                                                                                                                                               |
 | `npm run prisma:migrate:deploy` | Apply committed Prisma migrations without creating new ones                                                                                                                                                           |
-| `npm run db:migrate:hackathon`  | Apply committed Drizzle migrations for the hackathon schema                                                                                                                                                           |
-| `npm run db:migrate`            | Apply **all** committed migrations — Prisma core schema then Drizzle hackathon schema                                                                                                                                 |
+| `npm run db:migrate`            | Apply all committed Prisma migrations                                                                                                                                                                                  |
 | `npm run db:prepare`            | Generate the Prisma client, then run `db:migrate` (the one-command DB setup used by CI and deploys)                                                                                                                   |
 | `npm run docs:openapi`          | Generate OpenAPI JSON spec to `docs/openapi.json`                                                                                                                                                                     |
 | `npm run docs:verify`           | Regenerate OpenAPI and verify required paths are documented (CI gate)                                                                                                                                                 |
@@ -1737,11 +1735,11 @@ docker compose up -d postgres
 cp .env.hackathon.example .env
 # Edit .env â†’ set DATABASE_URL and JWT_SECRET
 
-# 3. Apply all database migrations (Prisma core schema + Drizzle hackathon schema)
+# 3. Apply all database migrations
 npm run db:prepare
 
 # 4. Seed initial mock rounds and user data to Postgres
-npx ts-node src/db/seed.ts
+npx prisma db seed
 
 # Optional: seed joinable demo tournaments for /api/tournaments
 npm run db:seed:tournaments
@@ -1960,12 +1958,11 @@ Open [http://localhost:3001/api-docs](http://localhost:3001/api-docs) in a brows
 
 ## ORM Decision (ADR-style) — Issue #391
 
-**Status:** Accepted, step 1 implemented.
+**Status:** Accepted and implemented.
 
 **Context**
-The hackathon read/write paths used two ORMs against the same Postgres database:
-Drizzle (`src/db/*`) for `hackathon.service.ts` (bet placement, user stats, round
-pools), and Prisma (`prisma/schema.prisma`) for everything else, including the
+The hackathon read/write paths now use Prisma (`prisma/schema.prisma`) for all
+database access, including the
 `Mock*` models (`MockRound`, `MockLeaderboard`, `MockPlatformStat`) that already
 back the hackathon read endpoints (`/api/rounds`, `/api/leaderboard`, `/api/stats`)
 via the repository layer. Running two migration/seed toolchains against one
@@ -1976,12 +1973,10 @@ silently leave the other out of sync.
 **Decision**
 Standardize on **Prisma** as the single ORM for hackathon data going forward.
 Prisma is already the ORM for every non-hackathon table and already has the
-`Mock*` models the hackathon read paths use — Drizzle was the odd one out here,
-not the other way around.
+`Mock*` models used by the hackathon paths.
 
-**Step 1 (this PR)**
-`hackathon.service.ts` — the one hackathon service still on Drizzle — has been
-migrated to Prisma:
+**Implementation**
+`hackathon.service.ts` uses the existing Prisma-backed mock models:
 
 - `MockLeaderboard` gained `balance` and `pendingWinnings` fields so it can
   represent the full hackathon user record (it previously only backed
@@ -1993,21 +1988,8 @@ migrated to Prisma:
   is unchanged, so `PrismaRoundRepository.placeBet` and `src/routes/user.ts`
   needed no changes.
 
-**Remaining work (follow-up, not in this PR)**
-
-- `src/db/*` (Drizzle client, schema, migrate script, seed script) is now
-  unused by application code and can be deleted once `drizzle-orm` /
-  `drizzle-kit` are removed from `package.json`.
-- The Prisma migration for the new `MockBet` model and `MockLeaderboard`
-  columns still needs to be generated and applied against a real database
-  (`npx prisma migrate dev`) — not run here to avoid touching any live/shared
-  database from this change.
-
-**Why isolate-and-migrate over isolate-only**
-The alternative (marking Drizzle "demo-only" and leaving `hackathon.service.ts`
-on it) would have kept two live schemas against one database indefinitely.
-Since Prisma already owned the adjacent hackathon read models, migrating the
-one remaining Drizzle consumer was less total work than maintaining the split.
+The Prisma migration for the new `MockBet` model and `MockLeaderboard` columns
+must be generated and applied against a real database with `npx prisma migrate dev`.
 
 ## Hackathon API Rate Limits
 
