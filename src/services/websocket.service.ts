@@ -2,6 +2,7 @@ import { DispatchChannel } from '@prisma/client';
 import logger from '../utils/logger';
 import deadLetterQueueService from './dead-letter-queue.service';
 import { websocketEmitsTotal } from '../metrics/application.metrics';
+import config from '../config';
 import { prisma } from '../lib/prisma';
 import type {
   BetAcceptedPayload,
@@ -241,6 +242,11 @@ export class WebSocketService {
 
     // Broadcast new real-time price update to general room
     this.safeEmit({ room: 'round', event: WebSocketEvents.PriceUpdateV2, payload });
+
+    // In demo mode, clients join explicit round rooms; skip Prisma round lookup.
+    if (config.app.socketDemoMode) {
+      return;
+    }
 
     // Broadcast price update to room per active round
     try {

@@ -728,7 +728,7 @@ npm run db:prepare
 npm run prisma:migrate
 
 # (Optional) Seed database with sample data
-npx prisma db seed
+npm run db:seed
 ```
 
 #### Migration story (two schemas, one command)
