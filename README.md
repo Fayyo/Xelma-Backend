@@ -20,6 +20,7 @@ TypeScript/Node.js backend for the [Xelma](https://github.com/TevaLabs/Xelma-Blo
 - [Running the Server](#running-the-server)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
+- [Operations & Alerting](#operations--alerting)
 - [Migration Safety](#migration-safety)
 - [Scripts](#scripts)
 - [Troubleshooting](#troubleshooting)
@@ -695,6 +696,9 @@ Prismaâ€™s Postgres connector reads pool/timeouts via connection string que
 `GET /metrics` exposes Prometheus text-format metrics with only
 low-cardinality labels. Labels intentionally avoid user IDs, wallet addresses,
 round IDs, socket IDs, request bodies, and secrets.
+
+For ready-to-use Prometheus alert rules covering oracle freshness, Soroban RPC,
+and circuit-breaker health, see the [Prometheus alerts cookbook](docs/prometheus-alerts-cookbook.md).
 
 Core application metrics include:
 
