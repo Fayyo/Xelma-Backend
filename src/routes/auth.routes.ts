@@ -16,12 +16,18 @@ import {
 import {
   challengeRateLimiter,
   connectRateLimiter,
+  authRateLimiter,
 } from "../middleware/rateLimiter.middleware";
 import { validate } from "../middleware/validate.middleware";
 import { challengeSchema, connectSchema } from "../schemas/auth.schema";
 import { AuthenticationError, ErrorCode } from "../utils/errors";
 import { auditLogger } from "../utils/audit-logger";
 
+/**
+ * Wallet auth challenge/connect/verify routes.
+ * Mounted on both the production (`index.ts`) and hackathon (`app.ts`) apps
+ * so hackathon clients can obtain JWTs without switching servers (#400).
+ */
 const router = Router();
 
 /**
@@ -85,7 +91,7 @@ const router = Router();
  */
 router.post(
   "/challenge",
-  challengeRateLimiter,
+  challengeRateLimiter || authRateLimiter,
   validate(challengeSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     const requestId = (req as any).requestId;
@@ -526,7 +532,7 @@ const connectHandler = async (
 
 router.post(
   "/connect",
-  connectRateLimiter,
+  connectRateLimiter || authRateLimiter,
   validate(connectSchema),
   connectHandler,
 );

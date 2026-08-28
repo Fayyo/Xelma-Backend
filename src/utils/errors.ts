@@ -28,6 +28,7 @@ export enum ErrorCode {
   DUPLICATE_PREDICTION = "DUPLICATE_PREDICTION",
   ACTIVE_ROUND_EXISTS = "ACTIVE_ROUND_EXISTS",
   IDEMPOTENCY_KEY_CONFLICT = "IDEMPOTENCY_KEY_CONFLICT",
+  CONTRACT_INVALID_STATE = "CONTRACT_INVALID_STATE",
 }
 
 export interface ErrorDetail {
@@ -102,6 +103,23 @@ export class BusinessRuleError extends AppError {
 export class ExternalServiceError extends AppError {
   constructor(message: string, code: ErrorCode | string = ErrorCode.EXTERNAL_SERVICE_ERROR) {
     super(message, 503, code);
+  }
+}
+
+/**
+ * 503 – in-flight cap exceeded on a money/RPC path.
+ * Distinct from a generic upstream failure so the error handler can set Retry-After.
+ */
+export class BackpressureError extends ExternalServiceError {
+  readonly retryAfterSeconds: number;
+
+  constructor(
+    message = "Too many in-flight money-path operations. Please retry shortly.",
+    retryAfterSeconds = 1,
+  ) {
+    super(message, ErrorCode.EXTERNAL_SERVICE_ERROR);
+    this.name = "BackpressureError";
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -284,4 +302,64 @@ export const ERROR_CATALOG: readonly ErrorCatalogEntry[] = [
       "The Idempotency-Key was already used for a different request payload. " +
       "Retry the original payload or generate a new key.",
   },
+  {
+    code: ErrorCode.CONTRACT_INVALID_STATE,
+    status: 422,
+    errorClass: "BusinessRuleError",
+    description:
+      "Contract operation rejected due to invalid state on the blockchain.",
+  },
 ];
+
+/**
+ * Maps raw Soroban RPC/contract error messages into stable, safe AppErrors.
+ * Protects internal details from leaking while providing actionable codes.
+ */
+export function mapSorobanError(errorMsg: string | undefined): AppError {
+  const msg = (errorMsg || "").toLowerCase();
+
+  if (msg.includes("insufficient funds")) {
+    return new BusinessRuleError(
+      "Insufficient funds for contract operation.",
+      ErrorCode.INSUFFICIENT_FUNDS
+    );
+  }
+
+  if (
+    msg.includes("no pending") ||
+    msg.includes("nothing to claim") ||
+    msg.includes("already claimed")
+  ) {
+    return new BusinessRuleError(
+      "No claimable winnings available.",
+      ErrorCode.CONTRACT_INVALID_STATE
+    );
+  }
+
+  if (msg.includes("invalid state")) {
+    return new BusinessRuleError(
+      "Contract operation rejected due to invalid state.",
+      ErrorCode.CONTRACT_INVALID_STATE
+    );
+  }
+
+  if (msg.includes("timeout")) {
+    return new ExternalServiceError(
+      "Contract operation timed out.",
+      ErrorCode.EXTERNAL_SERVICE_ERROR
+    );
+  }
+
+  if (msg.includes("circuit breaker")) {
+    return new ExternalServiceError(
+      "Contract service temporarily unavailable. Please retry shortly.",
+      ErrorCode.EXTERNAL_SERVICE_ERROR
+    );
+  }
+
+  // Fallback for unknown errors (does not leak chain jargon)
+  return new ExternalServiceError(
+    "An unexpected contract error occurred.",
+    ErrorCode.EXTERNAL_SERVICE_ERROR
+  );
+}

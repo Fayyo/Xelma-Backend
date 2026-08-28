@@ -1,10 +1,17 @@
-import { Server as SocketIOServer } from 'socket.io';
 import { DispatchChannel } from '@prisma/client';
 import logger from '../utils/logger';
 import deadLetterQueueService from './dead-letter-queue.service';
 import { websocketEmitsTotal } from '../metrics/application.metrics';
 import config from '../config';
 import { prisma } from '../lib/prisma';
+import type {
+  BetAcceptedPayload,
+  ServerToClientEvents,
+  TypedServer,
+} from '../types/socket-events';
+import { serializeRoundUpdatePayload } from '../serializers/monetary.serializer';
+
+export type { BetAcceptedPayload };
 
 /**
  * Centralized event names so DLQ replay can map a stored `eventName` back
@@ -13,6 +20,7 @@ import { prisma } from '../lib/prisma';
 export const WebSocketEvents = {
   RoundStarted: 'round:started',
   PredictionPlaced: 'prediction:placed',
+  BetAccepted: 'bet:accepted',
   RoundResolved: 'round:resolved',
   PriceUpdate: 'price:update',
   ChatMessage: 'chat:message',
@@ -22,19 +30,23 @@ export const WebSocketEvents = {
   PriceUpdateV2: 'price_update',
 } as const;
 
-export type WebSocketEventName =
-  (typeof WebSocketEvents)[keyof typeof WebSocketEvents];
+type EventPayloadMap = {
+  [K in keyof ServerToClientEvents]: Parameters<ServerToClientEvents[K]>[0];
+};
 
-interface SafeEmitInput {
+type WebSocketEventName = keyof EventPayloadMap;
+
+/** Payload for live bet acceptance broadcasts (Issue #376). */
+interface SafeEmitInput<E extends WebSocketEventName> {
   room: string;
-  event: WebSocketEventName;
-  payload: any;
+  event: E;
+  payload: EventPayloadMap[E];
   userId?: string | null;
 }
 
 export class WebSocketService {
   private static _singleton = new WebSocketService();
-  private io: SocketIOServer | null = null;
+  private io: TypedServer | null = null;
 
   static get instance(): WebSocketService {
     return WebSocketService._singleton;
@@ -51,7 +63,7 @@ export class WebSocketService {
   /**
    * Initialize the WebSocket service with Socket.IO instance
    */
-  initialize(io: SocketIOServer): void {
+  initialize(io: TypedServer): void {
     this.io = io;
     logger.info("WebSocket service initialized");
   }
@@ -59,7 +71,7 @@ export class WebSocketService {
   /**
    * Get the Socket.IO instance
    */
-  getIO(): SocketIOServer | null {
+  getIO(): TypedServer | null {
     return this.io;
   }
 
@@ -69,11 +81,10 @@ export class WebSocketService {
    * replayed (Issue #193). Never throws — emits are fire-and-forget on the
    * caller's hot path.
    */
-  private safeEmit(input: SafeEmitInput): void {
+  private safeEmit<E extends WebSocketEventName>(input: SafeEmitInput<E>): void {
     if (!this.io) {
       logger.warn(`WebSocket not initialized, cannot emit ${input.event}`);
       websocketEmitsTotal.inc({ event: input.event, outcome: 'unavailable' });
-      // fire-and-forget — DLQ helper swallows its own errors
       void deadLetterQueueService.record({
         channel: DispatchChannel.WEBSOCKET_EMIT,
         eventName: input.event,
@@ -85,7 +96,7 @@ export class WebSocketService {
     }
 
     try {
-      this.io.to(input.room).emit(input.event, input.payload);
+      (this.io.to(input.room).emit as any)(input.event, input.payload);
       websocketEmitsTotal.inc({ event: input.event, outcome: 'success' });
     } catch (err) {
       logger.error(`Failed to emit ${input.event}`, { error: err });
@@ -120,12 +131,9 @@ export class WebSocketService {
     if (!room) {
       throw new Error('Missing room for websocket replay');
     }
-    this.io.to(room).emit(eventName, data);
+    (this.io.to(room).emit as (event: string, data: unknown) => void)(eventName, data);
   }
 
-  /**
-   * Emit event when a new round starts
-   */
   /**
    * Emit event when a new round starts
    */
@@ -162,6 +170,30 @@ export class WebSocketService {
   }
 
   /**
+   * Emit when a bet is accepted (stub or on-chain). Broadcasts to the
+   * general `round` room and, when known, to `round:{roundId}`.
+   * Used by both the full server (`initializeSocket` → this service) and
+   * the hackathon entrypoint (`initWebSocket` → same service).
+   */
+  emitBetAccepted(payload: BetAcceptedPayload): void {
+    this.safeEmit({
+      room: 'round',
+      event: WebSocketEvents.BetAccepted,
+      payload,
+    });
+    if (payload.roundId) {
+      this.safeEmit({
+        room: `round:${payload.roundId}`,
+        event: WebSocketEvents.BetAccepted,
+        payload,
+      });
+    }
+    logger.info(
+      `Emitted bet:accepted for address=${payload.address} mode=${payload.mode} state=${payload.state}`,
+    );
+  }
+
+  /**
    * Emit event when a round is resolved
    */
   emitRoundResolved(round: any): void {
@@ -185,19 +217,7 @@ export class WebSocketService {
    * Emit real-time round status and pool updates to general and round-specific rooms
    */
   emitRoundUpdate(round: any): void {
-    const payload = {
-      id: round.id,
-      mode: round.mode,
-      status: round.status,
-      startTime: round.startTime?.toISOString?.() || round.startTime,
-      endTime: round.endTime?.toISOString?.() || round.endTime,
-      startPrice: round.startPrice ? Number(round.startPrice) : null,
-      endPrice: round.endPrice ? Number(round.endPrice) : null,
-      poolUp: round.poolUp ? Number(round.poolUp) : 0,
-      poolDown: round.poolDown ? Number(round.poolDown) : 0,
-      priceRanges: round.priceRanges,
-      resolvedAt: round.resolvedAt?.toISOString?.() || round.resolvedAt,
-    };
+    const payload = serializeRoundUpdatePayload(round as Record<string, unknown>);
 
     // Broadcast to general 'round' room
     this.safeEmit({ room: 'round', event: WebSocketEvents.RoundUpdate, payload });

@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { Prisma } from '@prisma/client';
-import { AppError, ValidationError, ErrorCode } from '../utils/errors';
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientValidationError,
+} from '@prisma/client/runtime/library';
+import { AppError, BackpressureError, ValidationError, ErrorCode } from '../utils/errors';
+import { CircuitBreakerOpenError } from '../utils/circuit-breaker';
 import logger from '../utils/logger';
 
 /**
@@ -15,12 +19,13 @@ export interface ErrorResponse {
   requestId?: string;
   details?: { field: string; message: string }[];
   timestamp?: string;
+  retryAfter?: number;
 }
 
 /**
  * Maps a Prisma known-request error to an AppError.
  */
-function fromPrismaError(err: Prisma.PrismaClientKnownRequestError): AppError {
+function fromPrismaError(err: PrismaClientKnownRequestError): AppError {
   switch (err.code) {
     case 'P2025':
       // Record not found
@@ -57,9 +62,24 @@ export function errorHandler(
 ): void {
   let appError: AppError;
 
-  if (err instanceof AppError) {
+  let retryAfterSeconds: number | undefined;
+
+  if (err instanceof BackpressureError) {
     appError = err;
-  } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    retryAfterSeconds = err.retryAfterSeconds;
+  } else if (err instanceof CircuitBreakerOpenError) {
+    appError = new AppError(
+      'Contract service temporarily unavailable. Please retry shortly.',
+      503,
+      ErrorCode.EXTERNAL_SERVICE_ERROR,
+    );
+    retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((err.nextAttemptAt.getTime() - Date.now()) / 1000),
+    );
+  } else if (err instanceof AppError) {
+    appError = err;
+  } else if (err instanceof PrismaClientKnownRequestError) {
     appError = fromPrismaError(err);
   } else if (
     err instanceof SyntaxError &&
@@ -68,7 +88,7 @@ export function errorHandler(
     (err as any).type === 'entity.parse.failed'
   ) {
     appError = new ValidationError('Malformed JSON body');
-  } else if (err instanceof Prisma.PrismaClientValidationError) {
+  } else if (err instanceof PrismaClientValidationError) {
     appError = new ValidationError('Invalid database query parameters');
   } else if (err instanceof Error) {
     appError = new AppError(err.message || 'Internal Server Error', 500, ErrorCode.INTERNAL_SERVER_ERROR);
@@ -98,9 +118,14 @@ export function errorHandler(
     path: req.originalUrl, // <-- Explicitly mapped parameter requirement
     requestId,
     timestamp,
+    ...(retryAfterSeconds !== undefined && { retryAfter: retryAfterSeconds }),
     ...(appError.details && { details: appError.details }),
     ...(isDev && err instanceof Error && { stack: err.stack }),
   };
+
+  if (retryAfterSeconds !== undefined) {
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+  }
 
   res.status(appError.statusCode).json(body);
 }
@@ -112,10 +137,10 @@ export function errorHandler(
  * Usage:
  * router.get('/path', asyncHandler(async (req, res) => { ... }));
  */
-export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
+export function asyncHandler<Req extends Request = Request>(
+  fn: (req: Req, res: Response, next: NextFunction) => Promise<unknown>,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req as Req, res, next)).catch(next);
   };
 }

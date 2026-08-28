@@ -2,10 +2,12 @@ import { describe, it, expect, beforeAll, afterEach, beforeEach } from "@jest/gl
 import request from "supertest";
 import { Express } from "express";
 import { UserRole } from "@prisma/client";
+import { ErrorCode, ExternalServiceError } from "../utils/errors";
+import { CircuitBreakerOpenError } from "../utils/circuit-breaker";
 import { createApp } from "../index";
 import sorobanService from "../services/soroban.service";
-import { UserRole } from "@prisma/client";
 import { generateToken } from "../utils/jwt.util";
+import { resetInMemoryIdempotencyStore } from "../utils/idempotency.util";
 
 jest.mock("../services/soroban.service", () => {
   return {
@@ -17,8 +19,23 @@ jest.mock("../services/soroban.service", () => {
   };
 });
 
+jest.mock("../middleware/rateLimiter.middleware", () => ({
+  challengeRateLimiter: (_req: any, _res: any, next: any) => next(),
+  connectRateLimiter: (_req: any, _res: any, next: any) => next(),
+  authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  chatMessageRateLimiter: (_req: any, _res: any, next: any) => next(),
+  predictionRateLimiter: (_req: any, _res: any, next: any) => next(),
+  batchPredictionRateLimiter: (_req: any, _res: any, next: any) => next(),
+  batchLeaderboardRateLimiter: (_req: any, _res: any, next: any) => next(),
+  adminRoundRateLimiter: (_req: any, _res: any, next: any) => next(),
+  oracleResolveRateLimiter: (_req: any, _res: any, next: any) => next(),
+  apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+  writeRateLimiter: (_req: any, _res: any, next: any) => next(),
+  betRateLimiter: (_req: any, _res: any, next: any) => next(),
+}));
+
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-const OTHER_ADDRESS = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBZ";
+const OTHER_ADDRESS = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 
 describe("Bets Routes", () => {
   let app: Express;
@@ -30,10 +47,14 @@ describe("Bets Routes", () => {
     token = generateToken("user-1", VALID_ADDRESS, UserRole.USER);
   });
 
-  afterEach(async () => {
+  beforeEach(() => {
+    process.env.DATA_STORE = "memory";
+  });
+
+  afterEach(() => {
     process.env = { ...originalEnv };
     jest.clearAllMocks();
-    await prisma.idempotencyKey.deleteMany({});
+    resetInMemoryIdempotencyStore();
   });
 
   describe("POST /api/bets/up-down", () => {
@@ -47,8 +68,12 @@ describe("Bets Routes", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
-        state: "stub",
+        data: {
+          message: "Bet recorded (stub)",
+          state: "stub",
+          betId: expect.any(String),
+          status: "STUB",
+        },
       });
     });
 
@@ -65,15 +90,21 @@ describe("Bets Routes", () => {
       expect(sorobanService.placeBet).toHaveBeenCalledWith(VALID_ADDRESS, 10, "UP");
       expect(res.body).toEqual({
         success: true,
-        message: "Bet placed on-chain",
-        state: "on-chain-success",
-        txHash: "0x123",
+        data: {
+          message: "Bet placed on-chain",
+          state: "on-chain-success",
+          txHash: "0x123",
+          betId: expect.any(String),
+          status: "CONFIRMED",
+        },
       });
     });
 
     it("returns 503 if Soroban contract interaction fails", async () => {
       process.env.BET_STUB_MODE = "false";
-      (sorobanService.placeBet as jest.Mock).mockRejectedValue(new Error("Soroban contract error: tx failed"));
+      (sorobanService.placeBet as jest.Mock).mockRejectedValue(
+        new ExternalServiceError("An unexpected contract error occurred.", ErrorCode.EXTERNAL_SERVICE_ERROR)
+      );
 
       const res = await request(app)
         .post("/api/bets/up-down")
@@ -81,18 +112,31 @@ describe("Bets Routes", () => {
         .send({ address: VALID_ADDRESS, amount: 10, side: "UP" });
 
       expect(res.status).toBe(503);
-      expect(res.body).toEqual({
-        success: false,
-        error: "Contract interaction failed. Please try again.",
-      });
+      expect(res.body.code).toBe(ErrorCode.EXTERNAL_SERVICE_ERROR);
+    });
+
+    it("returns 503 when the Soroban circuit breaker is open", async () => {
+      process.env.BET_STUB_MODE = "false";
+      (sorobanService.placeBet as jest.Mock).mockRejectedValue(
+        new CircuitBreakerOpenError("soroban-rpc", new Date(Date.now() + 30_000)),
+      );
+
+      const res = await request(app)
+        .post("/api/bets/up-down")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ address: VALID_ADDRESS, amount: 10, side: "UP" });
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe(ErrorCode.EXTERNAL_SERVICE_ERROR);
+      expect(res.headers["retry-after"]).toBeDefined();
     });
 
     it("rejects mismatched wallet address with 403", async () => {
       const res = await request(app)
         .post("/api/bets/up-down")
-        .set("Authorization", `Bearer ${validToken}`)
+        .set("Authorization", `Bearer ${token}`)
         .send({
-          address: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          address: OTHER_ADDRESS,
           amount: 10,
           side: "UP",
         });
@@ -128,7 +172,7 @@ describe("Bets Routes", () => {
         .send(payload);
 
       expect(res1.status).toBe(200);
-      expect(res1.body.txHash).toBe("0xidempotent");
+      expect(res1.body.data.txHash).toBe("0xidempotent");
       expect(sorobanService.placeBet).toHaveBeenCalledTimes(1);
 
       // Second request
@@ -160,11 +204,8 @@ describe("Bets Routes", () => {
       expect(res1.status).toBe(200);
       expect(sorobanService.placeBet).toHaveBeenCalledTimes(1);
 
-      // Manually expire the key in DB
-      await prisma.idempotencyKey.updateMany({
-        where: { idempotencyKey: key },
-        data: { expiresAt: new Date(Date.now() - 1000) },
-      });
+      // Treat the key as expired by dropping the in-memory record
+      resetInMemoryIdempotencyStore();
 
       // Second request
       const res2 = await request(app)
@@ -218,7 +259,7 @@ describe("Bets Routes", () => {
 
       for (const res of responses) {
         expect(res.status).toBe(200);
-        expect(res.body.txHash).toBe("0xconcurrent");
+        expect(res.body.data.txHash).toBe("0xconcurrent");
       }
 
       expect(sorobanService.placeBet).toHaveBeenCalledTimes(1);
@@ -243,7 +284,7 @@ describe("Bets Routes", () => {
         .send({ address: VALID_ADDRESS, amount: 20, side: "UP" }); // Changed amount
 
       expect(res.status).toBe(409);
-      expect(res.body.code).toBe("CONFLICT");
+      expect(res.body.code).toBe("IDEMPOTENCY_KEY_CONFLICT");
       expect(res.body.message).toContain("different request body");
     });
   });
@@ -259,8 +300,12 @@ describe("Bets Routes", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet recorded (stub)",
-        state: "stub",
+        data: {
+          message: "Bet recorded (stub)",
+          state: "stub",
+          betId: expect.any(String),
+          status: "STUB",
+        },
       });
     });
 
@@ -277,15 +322,21 @@ describe("Bets Routes", () => {
       expect(sorobanService.placePrecisionBet).toHaveBeenCalledWith(VALID_ADDRESS, 5, 0.12);
       expect(res.body).toEqual({
         success: true,
-        message: "Bet placed on-chain",
-        state: "on-chain-success",
-        txHash: "0x456",
+        data: {
+          message: "Bet placed on-chain",
+          state: "on-chain-success",
+          txHash: "0x456",
+          betId: expect.any(String),
+          status: "CONFIRMED",
+        },
       });
     });
 
     it("returns 503 if Soroban contract interaction fails", async () => {
       process.env.BET_STUB_MODE = "false";
-      (sorobanService.placePrecisionBet as jest.Mock).mockRejectedValue(new Error("Circuit breaker is open"));
+      (sorobanService.placePrecisionBet as jest.Mock).mockRejectedValue(
+        new CircuitBreakerOpenError("soroban-rpc", new Date(Date.now() + 30_000)),
+      );
 
       const res = await request(app)
         .post("/api/bets/precision")
@@ -293,10 +344,8 @@ describe("Bets Routes", () => {
         .send({ address: VALID_ADDRESS, amount: 5, predictedPrice: 0.12 });
 
       expect(res.status).toBe(503);
-      expect(res.body).toEqual({
-        success: false,
-        error: "Contract interaction failed. Please try again.",
-      });
+      expect(res.body.code).toBe(ErrorCode.EXTERNAL_SERVICE_ERROR);
+      expect(res.headers["retry-after"]).toBeDefined();
     });
 
     it("returns 400 when predictedPrice is missing", async () => {

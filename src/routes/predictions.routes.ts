@@ -15,11 +15,18 @@ import {
 import predictionService from '../services/prediction.service';
 import {
    checkIdempotency,
+   IDEMPOTENCY_STORE_UNAVAILABLE,
+   IdempotencyStoreUnavailableError,
    isValidIdempotencyKey,
    storeIdempotencyResult,
 } from '../utils/idempotency.util';
-import { ConflictError, ErrorCode, ValidationError } from '../utils/errors';
-import { toNumber, toDecimalString } from '../utils/decimal.util';
+import {
+   ConflictError,
+   ErrorCode,
+   ExternalServiceError,
+   ValidationError,
+} from '../utils/errors';
+import { serializePrediction, serializeRound } from '../serializers/monetary.serializer';
 
 const router = Router();
 const SUBMIT_PREDICTION_ENDPOINT = '/api/predictions/submit';
@@ -27,16 +34,16 @@ const SUBMIT_PREDICTION_ENDPOINT = '/api/predictions/submit';
 function buildSubmitPredictionResponse(prediction: any) {
    return {
       success: true,
-      prediction: {
+      prediction: serializePrediction({
          id: prediction.id,
          roundId: prediction.roundId,
          userId: prediction.userId,
-         amount: toDecimalString(prediction.amount),
+         amount: prediction.amount,
          side: prediction.side,
          priceRange: prediction.priceRange ?? null,
          createdAt:
             prediction.createdAt?.toISOString?.() ?? prediction.createdAt,
-      },
+      }),
    };
 }
 
@@ -130,6 +137,13 @@ router.post(
                   .json(idempotencyCheck.cachedResponse.body);
             }
 
+            if (idempotencyCheck.error === IDEMPOTENCY_STORE_UNAVAILABLE) {
+               throw new ExternalServiceError(
+                  'Idempotency store unavailable. Please try again.',
+                  ErrorCode.EXTERNAL_SERVICE_ERROR
+               );
+            }
+
             if (idempotencyCheck.error) {
                throw new ConflictError(
                   idempotencyCheck.error,
@@ -161,6 +175,14 @@ router.post(
 
          res.json(responseBody);
       } catch (error) {
+         if (error instanceof IdempotencyStoreUnavailableError) {
+            return next(
+               new ExternalServiceError(
+                  'Idempotency store unavailable. Please try again.',
+                  ErrorCode.EXTERNAL_SERVICE_ERROR
+               )
+            );
+         }
          next(error);
       }
    }) as any
@@ -246,26 +268,28 @@ router.get('/user', authenticateUser, (async (
 
       const predictions = await predictionService.getUserPredictions(userId);
 
-      const serializedPredictions = predictions.map((p: any) => ({
+      const serializedPredictions = predictions.map((p: any) =>
+         serializePrediction({
          id: p.id,
          roundId: p.roundId,
          userId: p.userId,
-         amount: toDecimalString(p.amount),
+         amount: p.amount,
          side: p.side,
          priceRange: p.priceRange,
-         payout: p.payout !== null && p.payout !== undefined ? toDecimalString(p.payout) : null,
+         payout: p.payout,
          won: p.won,
          createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
          round: p.round
-            ? {
+            ? serializeRound({
                  id: p.round.id,
                  mode: p.round.mode,
                  status: p.round.status,
-                 startPrice: toDecimalString(p.round.startPrice),
-                 endPrice: p.round.endPrice !== null && p.round.endPrice !== undefined ? toDecimalString(p.round.endPrice) : null,
-              }
+                 startPrice: p.round.startPrice,
+                 endPrice: p.round.endPrice,
+              })
             : null,
-      }));
+         }),
+      );
 
       res.json({
          success: true,
@@ -301,14 +325,15 @@ router.get(
          const predictions =
             await predictionService.getRoundPredictions(roundId);
 
-         const serializedPredictions = predictions.map((p: any) => ({
+         const serializedPredictions = predictions.map((p: any) =>
+            serializePrediction({
             id: p.id,
             roundId: p.roundId,
             userId: p.userId,
-            amount: toDecimalString(p.amount),
+            amount: p.amount,
             side: p.side,
             priceRange: p.priceRange,
-            payout: p.payout !== null && p.payout !== undefined ? toDecimalString(p.payout) : null,
+            payout: p.payout,
             won: p.won,
             createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
             user: p.user
@@ -317,7 +342,8 @@ router.get(
                     walletAddress: p.user.walletAddress,
                  }
                : null,
-         }));
+            }),
+         );
 
          res.json({
             success: true,

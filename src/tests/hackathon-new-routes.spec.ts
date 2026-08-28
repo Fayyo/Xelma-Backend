@@ -24,8 +24,8 @@ describe('Hackathon new routes', () => {
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data.length).toBeGreaterThanOrEqual(1);
-      expect(res.body.pagination).toBeDefined();
-      expect(res.body.pagination.total).toBeGreaterThanOrEqual(1);
+      expect(res.body.meta.pagination).toBeDefined();
+      expect(res.body.meta.pagination.total).toBeGreaterThanOrEqual(1);
     });
 
     it('filters by status', async () => {
@@ -33,6 +33,12 @@ describe('Hackathon new routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.every((t: any) => t.status === 'ACTIVE')).toBe(true);
+    });
+
+    it('filters by mode', async () => {
+      const res = await request(app).get('/api/tournaments?mode=LEGENDS');
+      expect(res.status).toBe(200);
+      expect(res.body.data.every((t: any) => t.mode === 'LEGENDS')).toBe(true);
     });
   });
 

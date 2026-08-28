@@ -30,6 +30,22 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+  bindings-pin:
+    name: vendored bindings pin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify vendored bindings pin
+        run: npm run check:bindings
+
   scorecard:
     name: production-readiness scorecard
     runs-on: ubuntu-latest
@@ -68,7 +84,37 @@ jobs:
       - name: Run build
         run: npm run build
 
-      - name: Verify OpenAPI spec generates required routes
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  contract-drift:
+    name: contract drift check
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Check OpenAPI contract drift
         run: npm run docs:verify
 
   test-unit:
@@ -76,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_ENV: test
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-test-secret-2026
       TEST_TYPE: unit
 
     steps:
@@ -109,7 +155,7 @@ jobs:
       NODE_ENV: test
       CI: "true"
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xelma_ci
-      JWT_SECRET: ci-test-secret
+      JWT_SECRET: ci-test-secret-2026
 
     services:
       postgres:
@@ -143,7 +189,7 @@ jobs:
         run: npx prisma generate
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: npm run db:migrate
 
       - name: Run integration tests
         run: npm run test:integration
@@ -153,7 +199,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_ENV: test
-      CI: "true"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/xelma_ci
+      JWT_SECRET: ci-test-secret-2026
 
     services:
       postgres:
@@ -187,7 +234,7 @@ jobs:
         run: npx prisma generate
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: npm run db:migrate
 
       - name: Run hackathon HTTP tests
         run: npm run test:hackathon:http

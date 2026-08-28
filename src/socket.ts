@@ -1,11 +1,11 @@
-import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { verifyToken, verifyTokenDetailed } from './utils/jwt.util';
 import { prisma } from './lib/prisma';
 import websocketService from './services/websocket.service';
 import chatService from './services/chat.service';
 import multiplayerSessionService from './services/multiplayer-session.service';
-import { ChatMessage } from './types/chat.types';
 import logger from './utils/logger';
 import { initializeSocketAdapter } from './utils/socket-adapter';
 import config from './config';
@@ -13,61 +13,35 @@ import {
    setSocketConnectionsActive,
    websocketConnectionEventsTotal,
 } from './metrics/application.metrics';
+import type {
+   TypedServer,
+   TypedSocket,
+   ServerToClientEvents,
+   ClientToServerEvents,
+   ServerHelloPayload,
+   AuthErrorPayload,
+   RoomEventPayload,
+   GenericErrorPayload,
+   ResumePayload,
+   ChatSendPayload,
+   ChatAckPayload,
+   SessionCheckpointPayload,
+} from './types/socket-events';
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+let activeStaleInterval: NodeJS.Timeout | null = null;
+let activeTokenExpiryInterval: NodeJS.Timeout | null = null;
+let ioInstance: SocketIOServer | null = null;
 
-export function getCorsOrigins(): string | string[] {
-   const clientUrl = process.env.CLIENT_URL;
+export { getCorsOrigins } from './utils/cors';
+import { getCorsOrigins } from './utils/cors';
 
-   if (IS_PRODUCTION) {
-      if (!clientUrl) {
-         throw new Error(
-            'CLIENT_URL environment variable is required in production. ' +
-               'Socket.IO CORS cannot use wildcard origin (*) with credentials enabled.'
-         );
-      }
-      const additionalOrigins = process.env.ALLOWED_ORIGINS;
-      if (additionalOrigins) {
-         return [clientUrl, ...additionalOrigins.split(',').map(o => o.trim())];
-      }
-      return clientUrl;
-   }
-
-   if (!clientUrl) {
-      logger.warn(
-         'CLIENT_URL not set; allowing all origins for development. ' +
-            'Set CLIENT_URL to restrict origins.'
-      );
-      return '*';
-   }
-
-   const additionalOrigins = process.env.ALLOWED_ORIGINS;
-   if (additionalOrigins) {
-      return [clientUrl, ...additionalOrigins.split(',').map(o => o.trim())];
-   }
-   return clientUrl;
-}
-
-// Extended socket interface with user data
-interface AuthenticatedSocket extends Socket {
+// Extended socket with walletAddress attached directly alongside SocketData
+interface AuthenticatedSocket extends TypedSocket {
    userId?: string;
    walletAddress?: string;
    /** Unix epoch (ms) at which the JWT expires. */
    tokenExpiresAt?: number;
 }
-
-// Standardized ack payloads for chat:send
-type ChatAck =
-   | { ok: true; message: ChatMessage }
-   | {
-        ok: false;
-        error: string;
-        code:
-           | 'AUTH_REQUIRED'
-           | 'INVALID_CONTENT'
-           | 'RATE_LIMITED'
-           | 'SEND_FAILED';
-     };
 
 /**
  * In-memory sliding-window rate limiter for WebSocket events.
@@ -247,12 +221,13 @@ export function checkExpiredTokenSockets(
 
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
-         socket.emit('auth:error', {
+         const authErrorPayload: AuthErrorPayload = {
             code: AUTH_TOKEN_EXPIRED,
             message:
                'Your session token has expired. ' +
                'Refresh your access token and reconnect.',
-         });
+         };
+         socket.emit('auth:error', authErrorPayload);
          socket.disconnect(false);
       } else {
          connectionRegistry.delete(socketId);
@@ -300,10 +275,15 @@ export function checkExpiredTokenSockets(
  */
 export async function initializeSocket(
    httpServer: HTTPServer
-): Promise<SocketIOServer> {
+): Promise<TypedServer> {
    const corsOrigins = getCorsOrigins();
 
-   const io = new SocketIOServer(httpServer, {
+   const io = new SocketIOServer<
+      ClientToServerEvents,
+      ServerToClientEvents,
+      DefaultEventsMap,
+      import('./types/socket-events').SocketData
+   >(httpServer, {
       pingInterval: PING_INTERVAL,
       pingTimeout: PING_TIMEOUT,
       cors: {
@@ -321,22 +301,24 @@ export async function initializeSocket(
       });
    });
 
+   ioInstance = io;
+
    // Periodic stale connection cleanup.
    // unref() ensures this timer does not keep the Node.js process alive.
-   const staleInterval = setInterval(
+   activeStaleInterval = setInterval(
       () => checkStaleConnections(io),
       STALE_CHECK_INTERVAL_MS
    );
-   staleInterval.unref();
+   activeStaleInterval.unref();
 
    // Periodic token-expiry check — proactively notify clients whose JWT has
    // expired so they can refresh and reconnect without waiting for an auth
    // failure on their next application event.
-   const tokenExpiryInterval = setInterval(
+   activeTokenExpiryInterval = setInterval(
       () => checkExpiredTokenSockets(io),
       PING_INTERVAL
    );
-   tokenExpiryInterval.unref();
+   activeTokenExpiryInterval.unref();
 
    // JWT Authentication middleware
    io.use(async (socket: AuthenticatedSocket, next) => {
@@ -431,13 +413,14 @@ export async function initializeSocket(
 
       // Announce the heartbeat contract so clients can tune their reconnect
       // logic. On reconnect, clients must re-join rooms explicitly.
-      socket.emit('server:hello', {
+      const helloPayload: ServerHelloPayload = {
          socketId: socket.id,
          pingInterval: PING_INTERVAL,
          pingTimeout: PING_TIMEOUT,
          authenticated: !!socket.userId,
          userId: socket.userId,
-      });
+      };
+      socket.emit('server:hello', helloPayload);
 
       // Refresh lastSeenAt on any incoming application-level event.
       socket.onAny(() => {
@@ -472,14 +455,27 @@ export async function initializeSocket(
                walletAddress: walletSnapshot,
                socketId: socket.id,
             })
-            .then(resume => {
+            .then(async resume => {
                // Auto-rejoin rooms the user occupied before the drop. The
                // client also receives the resume payload so it can update
                // local UI state without a round-trip.
                for (const room of resume.rooms) {
                   socket.join(room);
                }
-               socket.emit('session:resume', resume);
+               socket.emit('session:resume', resume as ResumePayload);
+
+               // Issue #555: reconcile DB rooms against the adapter.
+               // If a previous instance crashed between a DB write and an adapter
+               // propagation, the DB may contain stale rooms. We also pick up any
+               // rooms the adapter added (e.g. the auto-joined user room) that are
+               // not yet in the DB.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  userIdSnapshot,
+                  adapterRooms,
+               );
             })
             .catch(err => {
                logger.warn(
@@ -501,8 +497,9 @@ export async function initializeSocket(
          const room = roundId ? `round:${roundId}` : 'round';
          socket.join(room);
          logger.info(`Socket ${socket.id} joined room: ${room}`);
-         socket.emit('room:joined', { room });
-         if (socket.userId && !config.app.socketDemoMode) {
+         const joinedPayload: RoomEventPayload = { room };
+         socket.emit('room:joined', joinedPayload);
+         if (socket.userId) {
             void multiplayerSessionService.addRoom(socket.userId, room);
          }
       });
@@ -519,9 +516,23 @@ export async function initializeSocket(
          const room = roundId ? `round:${roundId}` : 'round';
          socket.leave(room);
          logger.info(`Socket ${socket.id} left room: ${room}`);
-         socket.emit('room:left', { room });
-         if (socket.userId && !config.app.socketDemoMode) {
-            void multiplayerSessionService.removeRoom(socket.userId, room);
+         const leftPayload: RoomEventPayload = { room };
+         socket.emit('room:left', leftPayload);
+         if (socket.userId) {
+            void multiplayerSessionService.removeRoom(
+               socket.userId,
+               room,
+            ).then(() => {
+               // Issue #555: reconcile DB against adapter after leave to correct
+               // any drift from concurrent operations across instances.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  socket.userId!,
+                  adapterRooms,
+               );
+            });
          }
       });
 
@@ -534,14 +545,16 @@ export async function initializeSocket(
             return;
          }
          if (!socket.userId) {
-            socket.emit('error', {
+            const errPayload: GenericErrorPayload = {
                message: 'Authentication required to join chat',
-            });
+            };
+            socket.emit('error', errPayload);
             return;
          }
          socket.join('chat');
          logger.info(`Socket ${socket.id} joined room: chat`);
-         socket.emit('room:joined', { room: 'chat' });
+         const joinedChat: RoomEventPayload = { room: 'chat' };
+         socket.emit('room:joined', joinedChat);
          void multiplayerSessionService.addRoom(socket.userId, 'chat');
       });
 
@@ -549,9 +562,22 @@ export async function initializeSocket(
       socket.on('leave:chat', () => {
          socket.leave('chat');
          logger.info(`Socket ${socket.id} left room: chat`);
-         socket.emit('room:left', { room: 'chat' });
-         if (socket.userId && !config.app.socketDemoMode) {
-            void multiplayerSessionService.removeRoom(socket.userId, 'chat');
+         const leftChat: RoomEventPayload = { room: 'chat' };
+         socket.emit('room:left', leftChat);
+         if (socket.userId) {
+            void multiplayerSessionService.removeRoom(
+               socket.userId,
+               'chat',
+            ).then(() => {
+               // Issue #555: reconcile after leave to keep DB in sync.
+               const adapterRooms = Array.from(socket.rooms).filter(
+                  r => r !== socket.id,
+               );
+               void multiplayerSessionService.reconcileRooms(
+                  socket.userId!,
+                  adapterRooms,
+               );
+            });
          }
       });
 
@@ -559,10 +585,10 @@ export async function initializeSocket(
       socket.on(
          'chat:send',
          async (
-            data: { content: string },
-            callback?: (ack: ChatAck) => void
+            data: ChatSendPayload,
+            callback?: (ack: ChatAckPayload) => void
          ) => {
-            const ack = (payload: ChatAck): void => {
+            const ack = (payload: ChatAckPayload): void => {
                if (typeof callback === 'function') callback(payload);
             };
 
@@ -638,25 +664,24 @@ export async function initializeSocket(
       // Join user notification room (for authenticated users)
       socket.on('join:notifications', () => {
          if (!socket.userId) {
-            socket.emit('error', {
+            const errPayload: GenericErrorPayload = {
                message: 'Authentication required for notifications',
-            });
+            };
+            socket.emit('error', errPayload);
             return;
          }
          socket.join(`user:${socket.userId}`);
-         socket.emit('room:joined', { room: 'notifications' });
-         if (!config.app.socketDemoMode) {
-            void multiplayerSessionService.addRoom(
-               socket.userId,
-               `user:${socket.userId}`
-            );
-         }
+         const joinedNotif: RoomEventPayload = { room: 'notifications' };
+         socket.emit('room:joined', joinedNotif);
+         void multiplayerSessionService.addRoom(
+            socket.userId,
+            `user:${socket.userId}`
+         );
       });
 
       // Issue #194: clients can checkpoint opaque session metadata
       // (e.g. last-viewed round, draft message) so it survives a reconnect.
-      socket.on('session:checkpoint', (patch: Record<string, unknown>) => {
-         if (config.app.socketDemoMode) return;
+      socket.on('session:checkpoint', (patch: SessionCheckpointPayload) => {
          if (!socket.userId) return;
          if (!patch || typeof patch !== 'object' || Array.isArray(patch))
             return;
@@ -698,4 +723,20 @@ export async function initWebSocket(httpServer: HTTPServer): Promise<void> {
    await initializeSocket(httpServer);
 }
 
-export default { initializeSocket };
+export function closeWebSocket(): void {
+   if (activeStaleInterval) {
+      clearInterval(activeStaleInterval);
+      activeStaleInterval = null;
+   }
+   if (activeTokenExpiryInterval) {
+      clearInterval(activeTokenExpiryInterval);
+      activeTokenExpiryInterval = null;
+   }
+   if (ioInstance) {
+      // Disconnect all socket clients forcefully to allow HTTP server to close
+      ioInstance.disconnectSockets(true);
+      ioInstance = null;
+   }
+}
+
+export default { initializeSocket, closeWebSocket };

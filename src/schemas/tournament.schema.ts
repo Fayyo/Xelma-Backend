@@ -7,8 +7,21 @@ export const joinTournamentParamsSchema = z.object({
 
 export type JoinTournamentParams = z.infer<typeof joinTournamentParamsSchema>;
 
+export const tournamentModeSchema = z.enum(["UP_DOWN", "LEGENDS"]);
+export const tournamentStatusSchema = z.enum([
+  "UPCOMING",
+  "ACTIVE",
+  "COMPLETED",
+  "CANCELLED",
+]);
+
+/**
+ * Query params for GET /api/tournaments.
+ * Supports mode and/or status filters with shared offset pagination.
+ */
 export const tournamentListQuerySchema = offsetPaginationSchema.extend({
-  status: z.string().optional(),
+  mode: tournamentModeSchema.optional(),
+  status: tournamentStatusSchema.optional(),
 });
 
 export type TournamentListQuery = z.infer<typeof tournamentListQuerySchema>;
