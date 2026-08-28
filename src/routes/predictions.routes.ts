@@ -12,7 +12,9 @@ import {
    batchSubmitPredictionsSchema,
    submitPredictionSchema,
 } from '../schemas/predictions.schema';
-import predictionService from '../services/prediction.service';
+import predictionService, {
+   type PredictionRow,
+} from '../services/prediction.service';
 import {
    checkIdempotency,
    IDEMPOTENCY_STORE_UNAVAILABLE,
@@ -31,7 +33,7 @@ import { serializePrediction, serializeRound } from '../serializers/monetary.ser
 const router = Router();
 const SUBMIT_PREDICTION_ENDPOINT = '/api/predictions/submit';
 
-function buildSubmitPredictionResponse(prediction: any) {
+function buildSubmitPredictionResponse(prediction: PredictionRow) {
    return {
       success: true,
       prediction: serializePrediction({
@@ -268,26 +270,26 @@ router.get('/user', authenticateUser, (async (
 
       const predictions = await predictionService.getUserPredictions(userId);
 
-      const serializedPredictions = predictions.map((p: any) =>
+      const serializedPredictions = predictions.map((p) =>
          serializePrediction({
-         id: p.id,
-         roundId: p.roundId,
-         userId: p.userId,
-         amount: p.amount,
-         side: p.side,
-         priceRange: p.priceRange,
-         payout: p.payout,
-         won: p.won,
-         createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
-         round: p.round
-            ? serializeRound({
-                 id: p.round.id,
-                 mode: p.round.mode,
-                 status: p.round.status,
-                 startPrice: p.round.startPrice,
-                 endPrice: p.round.endPrice,
-              })
-            : null,
+            id: p.id,
+            roundId: p.roundId,
+            userId: p.userId,
+            amount: p.amount,
+            side: p.side,
+            priceRange: p.priceRange,
+            payout: p.payout,
+            won: p.won,
+            createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
+            round: p.round
+               ? serializeRound({
+                    id: p.round.id,
+                    mode: p.round.mode,
+                    status: p.round.status,
+                    startPrice: p.round.startPrice,
+                    endPrice: p.round.endPrice,
+                 })
+               : null,
          }),
       );
 
@@ -325,23 +327,23 @@ router.get(
          const predictions =
             await predictionService.getRoundPredictions(roundId);
 
-         const serializedPredictions = predictions.map((p: any) =>
+         const serializedPredictions = predictions.map((p) =>
             serializePrediction({
-            id: p.id,
-            roundId: p.roundId,
-            userId: p.userId,
-            amount: p.amount,
-            side: p.side,
-            priceRange: p.priceRange,
-            payout: p.payout,
-            won: p.won,
-            createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
-            user: p.user
-               ? {
-                    id: p.user.id,
-                    walletAddress: p.user.walletAddress,
-                 }
-               : null,
+               id: p.id,
+               roundId: p.roundId,
+               userId: p.userId,
+               amount: p.amount,
+               side: p.side,
+               priceRange: p.priceRange,
+               payout: p.payout,
+               won: p.won,
+               createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
+               user: p.user
+                  ? {
+                       id: p.user.id,
+                       walletAddress: p.user.walletAddress,
+                    }
+                  : null,
             }),
          );
 
