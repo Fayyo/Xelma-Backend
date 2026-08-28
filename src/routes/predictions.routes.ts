@@ -313,41 +313,37 @@ router.get(
  */
 router.get(
    '/round/:roundId',
-   async (req: Request, res: Response, next: NextFunction) => {
-      try {
-         const { roundId } = req.params;
+   asyncHandler(async (req: Request, res: Response) => {
+      const { roundId } = req.params;
 
-         const predictions =
-            await predictionService.getRoundPredictions(roundId);
+      const predictions =
+         await predictionService.getRoundPredictions(roundId);
 
-         const serializedPredictions = predictions.map((p) =>
-            serializePrediction({
-               id: p.id,
-               roundId: p.roundId,
-               userId: p.userId,
-               amount: p.amount,
-               side: p.side,
-               priceRange: p.priceRange,
-               payout: p.payout,
-               won: p.won,
-               createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
-               user: p.user
-                  ? {
-                       id: p.user.id,
-                       walletAddress: p.user.walletAddress,
-                    }
-                  : null,
-            }),
-         );
+      const serializedPredictions = predictions.map((p) =>
+         serializePrediction({
+            id: p.id,
+            roundId: p.roundId,
+            userId: p.userId,
+            amount: p.amount,
+            side: p.side,
+            priceRange: p.priceRange,
+            payout: p.payout,
+            won: p.won,
+            createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
+            user: p.user
+               ? {
+                    id: p.user.id,
+                    walletAddress: p.user.walletAddress,
+                 }
+               : null,
+         }),
+      );
 
-         res.json({
-            success: true,
-            predictions: serializedPredictions,
-         });
-      } catch (error) {
-         next(error);
-      }
-   }
+      res.json({
+         success: true,
+         predictions: serializedPredictions,
+      });
+   })
 );
 
 export default router;
