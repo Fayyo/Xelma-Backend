@@ -205,8 +205,13 @@ export class PredictionService {
                      virtualBalance: { decrement: amountNum },
                   },
                })
-               .catch((err: any) => {
-                  if (err.code === 'P2025') {
+               .catch((err: unknown) => {
+                  if (
+                     typeof err === 'object' &&
+                     err !== null &&
+                     'code' in err &&
+                     err.code === 'P2025'
+                  ) {
                      throw new BusinessRuleError(
                         'Insufficient balance',
                         ErrorCode.INSUFFICIENT_FUNDS

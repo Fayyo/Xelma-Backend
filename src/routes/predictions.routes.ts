@@ -3,6 +3,7 @@ import {
    authenticateUser,
    AuthenticatedRequest,
 } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/errorHandler.middleware';
 import {
    batchPredictionRateLimiter,
    predictionRateLimiter,
@@ -105,7 +106,7 @@ router.post(
    authenticateUser,
    predictionRateLimiter,
    validate(submitPredictionSchema),
-   (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+   asyncHandler(async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
          const { roundId, amount, side, priceRange } = req.body;
          const userId = req.user.userId;
@@ -187,7 +188,7 @@ router.post(
          }
          next(error);
       }
-   }) as any
+   })
 );
 
 /**
@@ -228,24 +229,20 @@ router.post(
    authenticateUser,
    batchPredictionRateLimiter,
    validate(batchSubmitPredictionsSchema),
-   (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-      try {
-         const { predictions } = req.body;
-         const userId = req.user.userId;
+   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+      const { predictions } = req.body;
+      const userId = req.user.userId;
 
-         const result = await predictionService.submitBatchPredictions(
-            userId,
-            predictions
-         );
+      const result = await predictionService.submitBatchPredictions(
+         userId,
+         predictions
+      );
 
-         res.json({
-            ...result,
-            success: true,
-         });
-      } catch (error) {
-         next(error);
-      }
-   }) as any
+      res.json({
+         ...result,
+         success: true,
+      });
+   })
 );
 
 /**
@@ -260,12 +257,10 @@ router.post(
  *       200:
  *         description: List of predictions
  */
-router.get('/user', authenticateUser, (async (
-   req: AuthenticatedRequest,
-   res: Response,
-   next: NextFunction
-) => {
-   try {
+router.get(
+   '/user',
+   authenticateUser,
+   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.userId;
 
       const predictions = await predictionService.getUserPredictions(userId);
@@ -297,10 +292,8 @@ router.get('/user', authenticateUser, (async (
          success: true,
          predictions: serializedPredictions,
       });
-   } catch (error) {
-      next(error);
-   }
-}) as any);
+   })
+);
 
 /**
  * @openapi
