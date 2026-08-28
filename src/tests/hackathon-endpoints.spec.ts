@@ -94,7 +94,7 @@ describe('Hackathon Endpoints & Middleware', () => {
   describe('POST /api/rounds/hackathon/up-down/:id/bet', () => {
     it('persists the bet, updates user balance, and updates the round pool', async () => {
       // Get round initial pools
-      const roundBefore = await prisma.hackathonRound.findUnique({ where: { id: 'btc-updown-live' } });
+      const roundBefore = await prisma.mockRound.findUnique({ where: { id: 'btc-updown-live' } });
       const initialPoolUp = roundBefore!.poolUp;
 
       // Place bet
@@ -113,7 +113,7 @@ describe('Hackathon Endpoints & Middleware', () => {
       });
 
       // Verify DB update
-      const roundAfter = await prisma.hackathonRound.findUnique({ where: { id: 'btc-updown-live' } });
+      const roundAfter = await prisma.mockRound.findUnique({ where: { id: 'btc-updown-live' } });
       expect(roundAfter!.poolUp).toBe(initialPoolUp + 200);
     });
   });
@@ -121,7 +121,7 @@ describe('Hackathon Endpoints & Middleware', () => {
   describe('POST /api/rounds/hackathon/precision/:id/bet', () => {
     it('persists the bet and updates round totalPool and predictionCount', async () => {
       // Get round initial pools
-      const roundBefore = await prisma.hackathonRound.findUnique({ where: { id: 'eth-precision-live' } });
+      const roundBefore = await prisma.mockRound.findUnique({ where: { id: 'eth-precision-live' } });
       const initialPool = roundBefore!.totalPool;
       const initialCount = roundBefore!.predictionCount;
 
@@ -141,7 +141,7 @@ describe('Hackathon Endpoints & Middleware', () => {
       });
 
       // Verify DB update
-      const roundAfter = await prisma.hackathonRound.findUnique({ where: { id: 'eth-precision-live' } });
+      const roundAfter = await prisma.mockRound.findUnique({ where: { id: 'eth-precision-live' } });
       expect(roundAfter!.totalPool).toBe(initialPool + 150);
       expect(roundAfter!.predictionCount).toBe(initialCount + 1);
     });

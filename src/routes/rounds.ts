@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { betRateLimiter } from '../middleware/rateLimiter';
+import { betRateLimiter } from '../middleware/rateLimiter.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { upDownBetSchema, precisionBetSchema } from '../schemas/bets.schema';
 
