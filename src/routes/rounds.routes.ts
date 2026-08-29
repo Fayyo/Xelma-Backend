@@ -5,6 +5,7 @@ import simulationService from "../services/simulation.service";
 import {
   requireAdmin,
   requireOracle,
+  authenticateUser,
   AuthenticatedRequest,
 } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/errorHandler.middleware";
@@ -363,6 +364,7 @@ router.post(
 // Hackathon mutation endpoints - with Zod validation
 router.post(
   "/hackathon/up-down/:id/bet",
+  authenticateUser,
   betRateLimiter,
   validate(upDownBetSchema),
   (async (req: Request, res: Response, next: NextFunction) => {
@@ -379,6 +381,7 @@ router.post(
 
 router.post(
   "/hackathon/precision/:id/bet",
+  authenticateUser,
   betRateLimiter,
   validate(precisionBetSchema),
   (async (req: Request, res: Response, next: NextFunction) => {

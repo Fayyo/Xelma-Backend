@@ -105,15 +105,19 @@ describe('Socket demo mode (#427)', () => {
       transports: ['websocket'],
       auth: { token },
     });
+    // Attach the hello listener BEFORE connecting so the event emitted on
+    // connection is never missed (events are dropped if no listener is ready).
+    const helloPromise = waitFor(client, 'server:hello');
     await waitForConnect(client);
-    const hello = await waitFor(client, 'server:hello');
+    const hello = await helloPromise;
     expect(hello).toMatchObject({ authenticated: true, userId: 'demo-user-id' });
     expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
 
   it('delivers price updates on round rooms without Prisma', async () => {
+    const joinedPromise = waitFor(client, 'room:joined');
     client.emit('join:round', { roundId: 'btc-updown-live' });
-    await waitFor(client, 'room:joined');
+    await joinedPromise;
 
     const pricePromise = waitFor(client, 'price_update');
     await websocketService.emitPriceUpdate('BTC', 70000);

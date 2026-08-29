@@ -529,8 +529,8 @@ model MockRound {
 model MockLeaderboard {
   address         String @id
   rank            Int
-  totalWins       Int
-  totalLosses     Int
+  totalWins       Int    @map("total_wins")
+  totalLosses     Int    @map("total_losses")
   winStreak       Int    @map("current_streak")
   xp              Int
   rankTitle       String @map("rank_title")

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
 import hackathonService from '../services/hackathon.service';
 import { prisma } from '../lib/prisma';
 
@@ -17,6 +17,11 @@ const TEST_ADDRESS = 'GAAAAATOMIC_BET_TEST_ADDR_000000000000000001';
 
 describe('Hackathon Atomic Bets', () => {
   beforeAll(async () => {
+    await prisma.mockBet.deleteMany({ where: { address: TEST_ADDRESS } });
+    await prisma.mockLeaderboard.deleteMany({ where: { address: TEST_ADDRESS } });
+  });
+
+  beforeEach(async () => {
     await prisma.mockBet.deleteMany({ where: { address: TEST_ADDRESS } });
     await prisma.mockLeaderboard.deleteMany({ where: { address: TEST_ADDRESS } });
     await prisma.mockLeaderboard.create({

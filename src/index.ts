@@ -1,3 +1,4 @@
+import './utils/check-node-version';
 import dotenv from 'dotenv';
 import path from 'path';
 import { createServer, Server as HttpServer } from 'http';

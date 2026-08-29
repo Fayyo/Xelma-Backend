@@ -207,67 +207,60 @@ export class HackathonService {
     side?: 'UP' | 'DOWN',
     predictedPrice?: number,
   ): Promise<void> {
-    const mockPrisma = prisma as any;
-    const existing = await mockPrisma.mockLeaderboard.findUnique({ where: { address } });
-    if (!existing) {
-      await mockPrisma.mockLeaderboard.create({
-        data: {
-          address,
-          rank: 0,
-          balance: 1000,
-          pendingWinnings: 0,
-          totalWins: 3,
-          totalLosses: 1,
-          winStreak: 3,
-          xp: 410,
-          rankTitle: 'Rookie',
-        },
-      });
-    }
-
-    await (prisma as any).mockBet.create({
-      data: {
-        roundId,
-        address,
-        amount,
-        side,
-        predictedPrice,
-      },
-    });
-
-    const user = await (prisma as any).mockLeaderboard.findUnique({ where: { address } });
-    if (user) {
-      const newBalance = Math.max(0, user.balance - amount);
-      await (prisma as any).mockLeaderboard.update({
-        where: { address },
-        data: { balance: newBalance },
-      });
-    }
-
-    const round = await (prisma as any).mockRound.findUnique({ where: { id: roundId } });
-    if (round) {
-      if (round.mode === 'updown' && side) {
-        if (side === 'UP') {
-          await (prisma as any).mockRound.update({
-            where: { id: roundId },
-            data: { poolUp: (round.poolUp ?? 0) + amount },
-          });
-        } else {
-          await (prisma as any).mockRound.update({
-            where: { id: roundId },
-            data: { poolDown: (round.poolDown ?? 0) + amount },
-          });
-        }
-      } else if (round.mode === 'precision') {
-        await (prisma as any).mockRound.update({
-          where: { id: roundId },
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.mockLeaderboard.findUnique({ where: { address } });
+      if (!existing) {
+        await tx.mockLeaderboard.create({
           data: {
-            totalPool: (round.totalPool ?? 0) + amount,
-            predictionCount: (round.predictionCount ?? 0) + 1,
+            address,
+            rank: 0,
+            balance: 1000,
+            pendingWinnings: 0,
+            totalWins: 3,
+            totalLosses: 1,
+            winStreak: 3,
+            xp: 410,
+            rankTitle: 'Rookie',
           },
         });
       }
-    }
+
+      await tx.mockBet.create({
+        data: {
+          roundId,
+          address,
+          amount,
+          side,
+          predictedPrice,
+        },
+      });
+
+      await tx.mockLeaderboard.update({
+        where: { address },
+        data: { balance: { decrement: amount } },
+      });
+
+      const round = await tx.mockRound.findUnique({ where: { id: roundId } });
+      if (round) {
+        if (round.mode === 'updown' && side) {
+          await tx.mockRound.update({
+            where: { id: roundId },
+            data:
+              side === 'UP'
+                ? { poolUp: { increment: amount } }
+                : { poolDown: { increment: amount } },
+          });
+        } else if (round.mode === 'precision') {
+          await tx.mockRound.update({
+            where: { id: roundId },
+            data: {
+              totalPool: { increment: amount },
+              predictionCount: { increment: 1 },
+            },
+          });
+        }
+      }
+    });
   }
 }
 

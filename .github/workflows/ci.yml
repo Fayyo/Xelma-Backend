@@ -144,6 +144,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run build (compiled dist used by node-version-check test)
+        run: npm run build
+
       - name: Run unit tests with coverage
         run: npm run test:unit:coverage
 
@@ -207,6 +213,9 @@ jobs:
       - name: Run database migrations
         run: npm run db:migrate
 
+      - name: Seed mock data
+        run: npm run db:seed:mock
+
       - name: Run integration tests
         run: npm run test:integration
 
@@ -251,6 +260,9 @@ jobs:
 
       - name: Run database migrations
         run: npm run db:migrate
+
+      - name: Seed mock data
+        run: npm run db:seed:mock
 
       - name: Run hackathon HTTP tests
         run: npm run test:hackathon:http
