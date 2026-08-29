@@ -260,16 +260,48 @@ router.post(
 );
 
 /**
+ * ENABLE_SIMULATION is the master switch for the QA simulate endpoint.
+ * When it is off the route is locked down (403) in EVERY environment —
+ * including development and test — so simulation can never run misconfigured.
+ * When it is on, only ADMIN callers may use it (see requireAdmin below).
+ */
+const requireSimulationEnabled = (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  if (!config.app.enableSimulation) {
+    res.status(403).json({
+      success: false,
+      error:
+        "Simulation is disabled. Set ENABLE_SIMULATION=true to enable this QA endpoint.",
+    });
+    return;
+  }
+  next();
+};
+
+/**
  * @swagger
  * /api/rounds/{id}/simulate:
  *   post:
  *     summary: Simulate a round resolution (Non-Production QA Endpoint)
- *     description: Simulates payout distribution without placing real bets or mutating the round. Disabled in production unless ENABLE_SIMULATION=true.
+ *     description: >
+ *       Simulates payout distribution for a round WITHOUT placing real bets or
+ *       mutating the round. This is a QA/admin-only endpoint and must not be
+ *       enabled on production builds. It is gated by the ENABLE_SIMULATION
+ *       environment variable (default: false): when the flag is off the route
+ *       returns 403 in EVERY environment, including development and test. When
+ *       the flag is on, the caller must present an ADMIN bearer token
+ *       (`Authorization: Bearer <JWT>`).
  *     tags: [rounds]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
+ *         description: Round ID to simulate
  *         schema: { type: string }
  *     requestBody:
  *       required: true
@@ -278,63 +310,89 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
- *               finalPrice: { type: number }
+ *               finalPrice:
+ *                 type: number
+ *                 description: Hypothetical final price used to compute winners
  *             required: [finalPrice]
  *     responses:
  *       200:
  *         description: Simulation results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 roundId: { type: string }
+ *                 simulatedPrice: { type: number }
+ *                 mode: { type: string, enum: [UP_DOWN, LEGENDS] }
+ *                 startPrice: { type: number }
+ *                 winningSide: { type: string, nullable: true, enum: [UP, DOWN] }
+ *                 winningRange:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     min: { type: number }
+ *                     max: { type: number }
+ *                 predictions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       won: { type: boolean, nullable: true }
+ *                       payout: { type: number }
+ *                       amount: { type: number }
+ *                       side: { type: string, nullable: true, enum: [UP, DOWN] }
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalPredictions: { type: integer }
+ *                     winners: { type: integer }
+ *                     losers: { type: integer }
+ *                     refunded: { type: integer }
+ *                     totalPayout: { type: number }
  *       400:
- *         description: Validation error
+ *         description: Validation error - finalPrice missing
+ *       401:
+ *         description: Unauthorized - missing or invalid bearer token
  *       403:
- *         description: Disabled in production
+ *         description: Forbidden - simulation disabled (ENABLE_SIMULATION=false) or caller is not an admin
  *       404:
  *         description: Round not found
  */
 router.post(
   "/:id/simulate",
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (config.app.nodeEnv === "production" && !config.app.enableSimulation) {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            error:
-              "Simulation disabled in production unless ENABLE_SIMULATION=true",
-          });
-      }
+  requireSimulationEnabled,
+  requireAdmin,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+    const { finalPrice } = req.body;
 
-      const { id } = req.params;
-      const { finalPrice } = req.body;
-
-      if (finalPrice === undefined || finalPrice === null) {
-        return res
-          .status(400)
-          .json({ success: false, error: "finalPrice is required" });
-      }
-
-      const result = await simulationService.simulateRound(id, finalPrice);
-      if (!result) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Round not found" });
-      }
-
-      res.json({
-        success: true,
-        roundId: result.roundId,
-        simulatedPrice: result.simulatedPrice,
-        mode: result.mode,
-        startPrice: result.startPrice,
-        winningSide: result.winningSide,
-        winningRange: result.winningRange,
-        predictions: result.predictions,
-        summary: result.summary,
-      });
-    } catch (error) {
-      next(error);
+    if (finalPrice === undefined || finalPrice === null) {
+      return res
+        .status(400)
+        .json({ success: false, error: "finalPrice is required" });
     }
-  },
+
+    const result = await simulationService.simulateRound(id, finalPrice);
+    if (!result) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Round not found" });
+    }
+
+    res.json({
+      success: true,
+      roundId: result.roundId,
+      simulatedPrice: result.simulatedPrice,
+      mode: result.mode,
+      startPrice: result.startPrice,
+      winningSide: result.winningSide,
+      winningRange: result.winningRange,
+      predictions: result.predictions,
+      summary: result.summary,
+    });
+  }),
 );
 
 // Hackathon mutation endpoints - with Zod validation

@@ -33,6 +33,7 @@ const REQUIRED_OPERATIONS: RequiredOperation[] = [
   // Rounds — lifecycle and settlement (src/routes/rounds.routes.ts)
   { path: "/api/rounds/start", method: "post", statuses: ["200", "400", "401", "403", "409"] },
   { path: "/api/rounds/{id}/resolve", method: "post", statuses: ["200", "400", "401", "403"] },
+  { path: "/api/rounds/{id}/simulate", method: "post", statuses: ["200", "400", "401", "403", "404"] },
 
   // Chat (src/routes/chat.routes.ts)
   { path: "/api/chat/send", method: "post", statuses: ["201", "429"] },
