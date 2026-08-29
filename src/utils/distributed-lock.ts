@@ -1,4 +1,4 @@
-import { createClient } from 'redis';
+import { createClient, type RedisClientType } from 'redis';
 import logger from './logger';
 
 /**
@@ -50,7 +50,7 @@ export class DistributedLock {
    private lockKey: string;
    private lockId: string;
    private config: DistributedLockConfig;
-   private redisClient: any = null;
+   private redisClient: RedisClientType | null = null;
 
    constructor(lockName: string, config: DistributedLockConfig = {}) {
       this.lockKey = `xelma:lock:${lockName}`;
@@ -220,7 +220,7 @@ export class DistributedLock {
    /**
     * Gets the Redis client, creating one if needed
     */
-   private async getRedisClient(): Promise<any> {
+   private async getRedisClient(): Promise<RedisClientType | null> {
       if (this.redisClient) {
          return this.redisClient;
       }

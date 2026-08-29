@@ -1,4 +1,4 @@
-import { createClient } from "redis";
+import { createClient, type RedisClientType } from "redis";
 import { withTimeout } from "../utils/timeout-wrapper";
 import logger from "../utils/logger";
 
@@ -33,10 +33,8 @@ const metrics: CacheMetrics = {
 
 const redisCacheDebug = process.env.REDIS_CACHE_DEBUG === "true";
 
-type RedisClient = any;
-
-let client: RedisClient | null = null;
-let clientConnecting: Promise<RedisClient | null> | null = null;
+let client: RedisClientType | null = null;
+let clientConnecting: Promise<RedisClientType | null> | null = null;
 let lastRedisFailureAtMs = 0;
 
 function getRedisUrl(): string | null {
@@ -63,7 +61,7 @@ function getRedisCachePrefix(): string {
  *   paths such as distributed idempotency locks), the client is only skipped
  *   when no Redis URL is configured or Redis is unreachable.
  */
-async function ensureClient(respectCacheFlag = true): Promise<RedisClient | null> {
+async function ensureClient(respectCacheFlag = true): Promise<RedisClientType | null> {
   const shouldEnable = respectCacheFlag ? getRedisCacheEnabled() : true;
   const redisUrl = getRedisUrl();
 
@@ -433,7 +431,7 @@ export async function invalidateLeaderboardSortedSet(): Promise<void> {
   }
 }
 
-export function getRedisClient(): RedisClient | null {
+export function getRedisClient(): RedisClientType | null {
   return client;
 }
 
@@ -469,7 +467,7 @@ export async function closeRedisClient(): Promise<void> {
  * @returns The connected shared client, or `null` when Redis is not
  *          configured or cannot be reached.
  */
-export async function getConnectedRedisClient(): Promise<RedisClient | null> {
+export async function getConnectedRedisClient(): Promise<RedisClientType | null> {
   return ensureClient(false);
 }
 
