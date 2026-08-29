@@ -3,6 +3,10 @@ import { describe, expect, it } from "@jest/globals";
 jest.mock("@prisma/client", () => ({
   UserRole: { USER: "USER", ADMIN: "ADMIN", ORACLE: "ORACLE" },
   Prisma: {},
+  PrismaClient: jest.fn().mockImplementation(() => ({
+    $connect: jest.fn(),
+    $disconnect: jest.fn(),
+  })),
 }));
 
 jest.mock("../services/websocket.service", () => ({
