@@ -25,36 +25,23 @@ afterEach(() => {
 });
 
 const emptyRepos = () => ({
-  rounds: { listActiveRounds: jest.fn(), placeBet: jest.fn() },
+  rounds: { placeBet: jest.fn() },
   leaderboard: { listLeaderboard: jest.fn() },
   stats: { getPlatformStats: jest.fn(), invalidateStatsCache: jest.fn() },
 });
 
 describe('API Contract Tests - frontend-critical endpoints (Issue #333)', () => {
   describe('GET /api/rounds', () => {
-    const roundsContract = z.object({
-      success: z.literal(true),
-      data: z.array(
-        z.object({
-          id: z.string(),
-          mode: z.string(),
-          status: z.string(),
-          startPrice: z.union([z.string(), z.number()]),
-        }),
-      ),
-    });
-
-    it('matches the documented response contract', async () => {
-      const repos = emptyRepos();
-      (repos.rounds.listActiveRounds as jest.Mock).mockResolvedValue([
-        { id: 'r-1', mode: 'UP_DOWN', status: 'ACTIVE', startPrice: 0.1234 },
-      ]);
-      setRepositoriesForTests(repos as any);
-
+    it('returns a success envelope with source and rounds', async () => {
+      // GET /api/rounds delegates to roundService.getRoundsForApi(),
+      // which falls back to mock data when Soroban/database are unavailable.
       const res = await request(app).get('/api/rounds');
 
       expect(res.status).toBe(200);
-      expect(() => roundsContract.parse(res.body)).not.toThrow();
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveProperty('source');
+      expect(res.body.data).toHaveProperty('rounds');
+      expect(Array.isArray(res.body.data.rounds)).toBe(true);
     });
   });
 

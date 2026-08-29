@@ -265,9 +265,9 @@ describe("Performance Baseline Checks (#152)", () => {
     expect(latency).toBeLessThan(LOAD_CONFIG.baseline.challengeLatencyMs);
   });
 
-  it(`GET /api/rounds/active should respond within ${LOAD_CONFIG.baseline.activeRoundsLatencyMs}ms`, async () => {
-    const latency = await measureLatency("get", "/api/rounds/active");
-    console.log(`[PERF] /api/rounds/active latency: ${latency}ms`);
+  it(`GET /api/rounds should respond within ${LOAD_CONFIG.baseline.activeRoundsLatencyMs}ms`, async () => {
+    const latency = await measureLatency("get", "/api/rounds");
+    console.log(`[PERF] /api/rounds latency: ${latency}ms`);
     expect(latency).toBeLessThan(LOAD_CONFIG.baseline.activeRoundsLatencyMs);
   });
 
@@ -439,7 +439,7 @@ describe("Load Test Harness — Read rounds (#500)", () => {
     app = createApp();
   });
 
-  it("sustains concurrent GET /api/rounds/active with measurable p95", async () => {
+  it("sustains concurrent GET /api/rounds with measurable p95", async () => {
     const { concurrency, iterations, minThroughputRps, maxP95LatencyMs, maxErrorRate } =
       LOAD_CONFIG.readRounds;
 
@@ -448,7 +448,7 @@ describe("Load Test Harness — Read rounds (#500)", () => {
       iterations,
       task: async () => {
         const startedAt = Date.now();
-        const response = await request(app).get("/api/rounds/active");
+        const response = await request(app).get("/api/rounds");
 
         return {
           success: response.status === 200,

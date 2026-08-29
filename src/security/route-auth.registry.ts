@@ -45,7 +45,6 @@ export const ROUTE_AUTH_REGISTRY: RouteAuthEntry[] = [
   // Rounds
   { method: "POST", path: "/api/rounds/start", auth: RouteAuthLevel.ADMIN },
   { method: "GET", path: "/api/rounds/:id", auth: RouteAuthLevel.PUBLIC },
-  { method: "GET", path: "/api/rounds/active", auth: RouteAuthLevel.PUBLIC },
   { method: "POST", path: "/api/rounds/:id/resolve", auth: RouteAuthLevel.ORACLE },
 
   // Bets (JWT required — wallet bound from token)

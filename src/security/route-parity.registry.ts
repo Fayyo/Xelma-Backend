@@ -52,7 +52,7 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api/user/:address/history", only: "main", reason: "Authenticated user surface is production-only." },
   { method: "GET", path: "/api/user/:walletAddress/public-profile", only: "main", reason: "Public profile lookup is production-only." },
   { method: "GET", path: "/api/rounds/:id", only: "main", reason: "Round detail lookup is production-only." },
-  { method: "GET", path: "/api/rounds/active", only: "main", reason: "Active-round lookup is production-only." },
+
   { method: "POST", path: "/api/rounds/start", only: "main", reason: "Admin round creation is production-only." },
   { method: "POST", path: "/api/rounds/:id/resolve", only: "main", reason: "Oracle round resolution is production-only." },
   { method: "POST", path: "/api/rounds/:id/simulate", only: "main", reason: "Round simulation is production-only." },
@@ -77,7 +77,7 @@ export const PARITY_ALLOWLIST: ParityAllowlistEntry[] = [
   { method: "GET", path: "/api", only: "hackathon", reason: "Hackathon app mounts the health router under /api instead of /health." },
 
   { method: "GET", path: "/api/stats", only: "hackathon", reason: "Landing-page platform stats are hackathon-only." },
-  { method: "GET", path: "/api/rounds", only: "hackathon", reason: "Hackathon mock rounds collection; production exposes /api/rounds/active and /api/rounds/:id." },
+
   { method: "POST", path: "/api/rounds/:id/bet", only: "hackathon", reason: "Hackathon mock bet stub." },
   { method: "POST", path: "/api/rounds/hackathon/up-down/:id/bet", only: "hackathon", reason: "Hackathon mock up-down bet stub." },
   { method: "POST", path: "/api/rounds/hackathon/precision/:id/bet", only: "hackathon", reason: "Hackathon mock precision bet stub." },

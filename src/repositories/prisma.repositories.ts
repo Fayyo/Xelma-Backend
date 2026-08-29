@@ -3,17 +3,10 @@ import {
   LeaderboardRepository,
   Repositories,
   RoundRepository,
-  RoundListResponse,
   StatsRepository,
 } from "./interfaces";
 
 export class PrismaRoundRepository implements RoundRepository {
-  async listActiveRounds(): Promise<RoundListResponse> {
-    const { default: roundService } = await import("../services/round.service");
-    const { rounds, source } = await roundService.getRoundsForApi();
-    return { source, rounds };
-  }
-
   async placeBet(
     roundId: string,
     address: string,
