@@ -8,7 +8,7 @@ import {
 import { betRateLimiter } from "../middleware/rateLimiter.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
-import { BetStatus } from "../data/bet-store";
+import { BetStatus } from "@prisma/client";
 import {
   acquireIdempotencyLock,
   IDEMPOTENCY_STORE_UNAVAILABLE,
@@ -18,6 +18,10 @@ import {
   isValidIdempotencyKey,
 } from "../utils/idempotency.util";
 import {
+  DistributedIdempotencyLockUnavailableError,
+  withDistributedIdempotencyLock,
+} from "../utils/distributed-idempotency-lock";
+import {
   ConflictError,
   ValidationError,
   ErrorCode,
@@ -26,6 +30,7 @@ import {
 } from "../utils/errors";
 import { sendSuccess } from "../utils/response";
 import { serializeBet } from "../serializers/monetary.serializer";
+import { prisma } from "../lib/prisma";
 
 const router = Router();
 
@@ -69,7 +74,7 @@ router.post(
     let lockAcquired = false;
     let operationCompleted = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -132,9 +137,31 @@ router.post(
       }
 
       return sendSuccess(res, data);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       if (error instanceof IdempotencyStoreUnavailableError) {
@@ -189,7 +216,7 @@ router.post(
     let lockAcquired = false;
     let operationCompleted = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -252,12 +279,41 @@ router.post(
       }
 
       return sendSuccess(res, data);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
       }
 
-      next(error);
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      return next(error);
     }
   }) as any,
 );
@@ -312,7 +368,7 @@ router.post(
     const endpoint = "/api/bets/claim";
     let lockAcquired = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -332,6 +388,13 @@ router.post(
           return res
             .status(lockResult.cachedResponse.status)
             .json(lockResult.cachedResponse.body);
+        }
+
+        if (lockResult.error === IDEMPOTENCY_STORE_UNAVAILABLE) {
+          throw new ExternalServiceError(
+            "Idempotency store unavailable. Please try again.",
+            ErrorCode.EXTERNAL_SERVICE_ERROR
+          );
         }
 
         if (lockResult.error) {
@@ -368,10 +431,39 @@ router.post(
         );
       }
 
-      res.json(responseBody);
+      return res.json(responseBody);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       return next(error);
@@ -379,7 +471,7 @@ router.post(
   }),
 );
 
-const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
+const BET_STATUSES: BetStatus[] = ["ACCEPTED", "SUBMITTED", "CONFIRMED", "RESOLVED", "FAILED"];
 
 /**
  * @swagger
@@ -419,7 +511,7 @@ const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
 router.get(
   "/reconciliation",
   requireAdmin,
-  ((req: Request, res: Response, next: NextFunction) => {
+  (async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { address, roundId, status } = req.query;
 
@@ -429,22 +521,34 @@ router.get(
         );
       }
 
-      const bets = betService.getBets({
-        address: address as string | undefined,
+      // If address is provided, look up userId
+      let userId: string | undefined;
+      if (address) {
+        const user = await prisma.user.findUnique({
+          where: { walletAddress: address as string },
+          select: { id: true },
+        });
+        userId = user?.id;
+      }
+
+      const bets = await betService.getBets({
+        userId,
         roundId: roundId as string | undefined,
         status: status as BetStatus | undefined,
       });
 
+      const summary = await betService.getReconciliationSummary();
+
       res.json({
         success: true,
-        summary: betService.getReconciliationSummary(),
+        summary,
         count: bets.length,
         bets: bets.map((bet) => serializeBet(bet as unknown as Record<string, unknown>)),
       });
     } catch (error) {
       next(error);
     }
-  }) as any,
+  }),
 );
 
 /**

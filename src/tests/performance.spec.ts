@@ -38,11 +38,21 @@ jest.mock("../services/soroban.service", () => ({
     },
 }));
 
-jest.mock("../lib/redis", () => ({
-  invalidateNamespace: jest.fn().mockResolvedValue(undefined),
-  invalidateLeaderboardSortedSet: jest.fn().mockResolvedValue(undefined),
-  getCacheMetrics: jest.fn().mockReturnValue({ enabled: false }),
-}));
+jest.mock("../lib/redis", () => {
+  const fakeLockClient = {
+    set: jest.fn().mockResolvedValue("OK"),
+    eval: jest.fn().mockResolvedValue(1),
+  };
+  return {
+    invalidateNamespace: jest.fn().mockResolvedValue(undefined),
+    invalidateLeaderboardSortedSet: jest.fn().mockResolvedValue(undefined),
+    getCacheMetrics: jest.fn().mockReturnValue({ enabled: false }),
+    // Fail-closed distributed idempotency lock (Issue #493): the load test
+    // keeps a fake client so it stays a pure throughput harness without a
+    // live Redis dependency.
+    getConnectedRedisClient: jest.fn().mockResolvedValue(fakeLockClient),
+  };
+});
 
 // Mock rate limiters to avoid 429 during load tests
 jest.mock("../middleware/rateLimiter.middleware", () => ({

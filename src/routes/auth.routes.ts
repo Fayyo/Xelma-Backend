@@ -544,4 +544,112 @@ router.post(
   connectHandler,
 );
 
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Refresh JWT access token
+ *     description: |
+ *       Re-issues a fresh JWT token for an authenticated user without requiring a full wallet signature challenge.
+ *       Expects Authorization header `Bearer <token>` or request body `{ token: "<token>" }`.
+ *     tags: [auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Existing JWT token to refresh (if not sent in Authorization header)
+ *     responses:
+ *       200:
+ *         description: Token successfully refreshed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthConnectResponse'
+ *       401:
+ *         description: Authentication failed or expired token
+ *         content:
+ *           application/json:
+ *             example:
+ *               error: Authentication Error
+ *               message: Invalid or expired token
+ *     x-codeSamples:
+ *       - lang: cURL
+ *         source: |
+ *           curl -X POST "$API_BASE_URL/api/auth/refresh" \
+ *             -H "Authorization: Bearer YOUR_EXPIRED_OR_CURRENT_JWT"
+ */
+router.post(
+  "/refresh",
+  authRateLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      let token: string | undefined;
+      const authHeader = req.headers.authorization;
+
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      } else if (req.body && typeof req.body.token === "string") {
+        token = req.body.token;
+      } else if (req.body && typeof req.body.refreshToken === "string") {
+        token = req.body.refreshToken;
+      }
+
+      if (!token) {
+        return next(
+          new AuthenticationError(
+            "Authentication token is required",
+            ErrorCode.AUTHENTICATION_ERROR,
+          ),
+        );
+      }
+
+      const decoded = verifyToken(token);
+      if (!decoded || !decoded.userId || !decoded.walletAddress) {
+        return next(
+          new AuthenticationError(
+            "Invalid or expired token",
+            ErrorCode.AUTHENTICATION_ERROR,
+          ),
+        );
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+      });
+
+      if (!user || user.walletAddress !== decoded.walletAddress) {
+        return next(
+          new AuthenticationError(
+            "User not found or wallet mismatch",
+            ErrorCode.AUTHENTICATION_ERROR,
+          ),
+        );
+      }
+
+      const freshToken = generateToken(user.id, user.walletAddress, user.role);
+
+      const response: ConnectResponse = {
+        token: freshToken,
+        user: {
+          id: user.id,
+          walletAddress: user.walletAddress,
+          createdAt: user.createdAt.toISOString(),
+          lastLoginAt: user.lastLoginAt?.toISOString() || new Date().toISOString(),
+        },
+      };
+
+      return res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 export default router;

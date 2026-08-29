@@ -20,6 +20,7 @@ TypeScript/Node.js backend for the [Xelma](https://github.com/TevaLabs/Xelma-Blo
 - [Running the Server](#running-the-server)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
+- [Operations & Alerting](#operations--alerting)
 - [Migration Safety](#migration-safety)
 - [Scripts](#scripts)
 - [Troubleshooting](#troubleshooting)
@@ -580,7 +581,7 @@ This installs all dependencies including `@tevalabs/xelma-bindings`.
 
 ### 3. One-Command Local Infra (Docker Compose)
 
-For contributors running **full backend mode** with PostgreSQL (and optional Redis), use Docker Compose:
+For contributors running **full backend mode** with PostgreSQL and Redis, use Docker Compose:
 
 ```bash
 cp .env.docker.example .env
@@ -593,15 +594,12 @@ docker compose up --build
 | ---------------- | ------ | ---------------------------------- |
 | API              | `3000` | `GET http://localhost:3000/health` |
 | PostgreSQL       | `5432` | `pg_isready -U xelma -d xelma`     |
-| Redis (optional) | `6379` | `redis-cli ping`                   |
+| Redis            | `6379` | `redis-cli ping`                   |
 
 The API container runs `prisma migrate deploy` on startup before booting the server.
-
-To include Redis (for Socket.IO adapter / distributed locks):
-
-```bash
-docker compose --profile full up --build
-```
+Redis is part of the default stack (used by the Socket.IO adapter and the
+distributed idempotency locks described below); the API service waits for it
+to be healthy before starting.
 
 To run the **hackathon mode** (no database required, mock data only):
 
@@ -617,7 +615,7 @@ docker compose --profile hackathon up
 | `Can't reach database server` | Wait for `postgres` health check to pass; confirm `DATABASE_URL` uses host `postgres` inside Compose |
 | Port `3000` already in use    | Change `PORT` in `.env` and map `3001:3001` (or similar) in `docker-compose.yml`                     |
 | Migrations fail on first boot | Run `docker compose logs api`; verify Postgres is healthy with `docker compose ps`                   |
-| Redis connection warnings     | Start with `--profile full` or unset `REDIS_URL` for API-only local mode                             |
+| Redis connection warnings     | Confirm Redis is healthy (`docker compose ps`) and `REDIS_URL` points at `redis://redis:6379` inside Compose |
 
 ---
 
@@ -672,6 +670,14 @@ is observable at `GET /health` (`services.oracle`) and via the `oracle_*` metric
 | :-------------- | :---------------------------------------------------------------------------------------------------------------- | :------ |
 | `BET_STUB_MODE` | `true` = stub mode (bets recorded locally, no on-chain calls); `false` = bets submitted to Soroban smart contract | `true`  |
 
+#### Distributed idempotency lock tuning
+
+| Variable                              | Purpose                                                                                | Default |
+| :------------------------------------ | :------------------------------------------------------------------------------------- | :------ |
+| `IDEMPOTENCY_LOCK_TTL_SECONDS`         | How long the Redis lock is held before auto-expiring (safety net)                      | `30`    |
+| `IDEMPOTENCY_LOCK_ACQUIRE_TIMEOUT_MS`  | How long to wait for a lock held by another in-flight request before returning 409     | `10000` |
+| `IDEMPOTENCY_LOCK_RETRY_DELAY_MS`      | Delay between lock acquisition attempts                                                 | `100`   |
+
 #### Database pool/timeout tuning
 
 Prismaâ€™s Postgres connector reads pool/timeouts via connection string query params. This backend exposes operational knobs as env vars and merges them into `DATABASE_URL` at startup (env vars win over existing query params):
@@ -695,6 +701,9 @@ Prismaâ€™s Postgres connector reads pool/timeouts via connection string que
 `GET /metrics` exposes Prometheus text-format metrics with only
 low-cardinality labels. Labels intentionally avoid user IDs, wallet addresses,
 round IDs, socket IDs, request bodies, and secrets.
+
+For ready-to-use Prometheus alert rules covering oracle freshness, Soroban RPC,
+and circuit-breaker health, see the [Prometheus alerts cookbook](docs/prometheus-alerts-cookbook.md).
 
 Core application metrics include:
 
@@ -728,7 +737,7 @@ npm run db:prepare
 npm run prisma:migrate
 
 # (Optional) Seed database with sample data
-npx prisma db seed
+npm run db:seed
 ```
 
 #### Migration story (one schema, one command)
@@ -1117,8 +1126,20 @@ Both `/api/bets/up-down` and `/api/bets/precision` endpoints support safe client
   - **First Successful Request**: Performs the bet operation (either stub or submits on-chain) and caches the response.
   - **Duplicate Request (Same Key & Body)**: Returns the original cached response with HTTP 200 without creating a duplicate bet or executing on-chain transactions again.
   - **Mutation Check (Same Key, Different Body)**: Returns HTTP 409 Conflict with code `CONFLICT` and error code `IDEMPOTENCY_KEY_CONFLICT` to protect against unintentional reuse of keys across different operations.
-  - **Concurrency Protection**: Simultaneous concurrent requests with the identical key are coordinated using database-level locks. Only one request will execute the operation, while other concurrent retries safely block/wait for the result and receive the same response, preventing double-betting under high latency or race conditions.
+  - **Concurrency Protection**: Simultaneous concurrent requests with the identical key are coordinated by a two-layer mechanism. A Redis distributed lock keyed by `userId + endpoint + idempotencyKey` (see [Distributed idempotency locking](#distributed-idempotency-locking)) serializes the race across all API replicas first; the existing database-level lock (`prisma.idempotencyKey` row) remains the source of truth underneath. Only one request executes the operation; every other concurrent retry waits for the lock, then replays the stored database response. This prevents double-betting even when multiple horizontally-scaled replicas receive the same `Idempotency-Key` simultaneously.
   - **Failures/Retries**: If the initial operation fails (e.g., Soroban network error or database timeout), the temporary lock is automatically released, allowing subsequent retries to execute the bet again instead of caching a failed state.
+
+#### Distributed idempotency locking (multi-replica)
+
+Bet routes (`/api/bets/up-down`, `/api/bets/precision`, `/api/bets/claim`) take
+an optional `Idempotency-Key` header. When present, the request **must** first
+acquire a Redis distributed lock before the database idempotency flow runs:
+
+- **Lock key**: `xelma:idempotency-lock:{userId}:{endpoint}:{idempotencyKey}`.
+- **Acquisition**: atomic `SET key token NX EX <ttl>` (30s default, configurable via `IDEMPOTENCY_LOCK_TTL_SECONDS`), retried while another replica holds the lock.
+- **Release**: Lua owner-check (`GET` matches token before `DEL`) so a stale holder can never delete a newer owner's lock. Release is best-effort; the TTL bounds the lock if the process dies mid-request.
+- **Fail-closed policy**: Redis is a hard dependency for bets that carry an `Idempotency-Key`. If Redis is unreachable, not configured, or a lock command fails, the request is rejected with HTTP 503 (`EXTERNAL_SERVICE_ERROR`) and **no bet is processed** — there is deliberately no fallback to DB-only locking, because Prisma-only locking is not safe under multi-replica + store-latency conditions. If the lock stays held by another in-flight request past `IDEMPOTENCY_LOCK_ACQUIRE_TIMEOUT_MS` (default 10s), the request is rejected with HTTP 409 (`IDEMPOTENCY_KEY_CONFLICT`).
+- **Requests without an `Idempotency-Key`** are unaffected and never touch the lock (there is no idempotency protection to serialize for them).
 
 ---
 
@@ -1261,10 +1282,25 @@ npm run test:load
 
 src/tests/redis-adapter.spec.ts proves that Socket.IO room broadcasts fan out across two independent server instances via the Redis adapter (simulating a multi-instance deployment). It is skipped automatically when REDIS_URL is not set, so it never blocks the default unit test run.
 
+### Distributed idempotency lock tests (Issue #493)
+
+`src/tests/bets-idempotency-concurrency.spec.ts` races 12 concurrent requests
+carrying the same `Idempotency-Key` against the real Prisma store + real Redis
+and asserts exactly one bet is accepted while every other response replays the
+stored result. `src/tests/bets-idempotency-redis-outage.spec.ts` points the
+shared Redis client at an unreachable address and asserts bet requests fail
+closed with HTTP 503, recording nothing. Both are integration tests and require
+PostgreSQL + Redis:
+
+```bash
+docker compose up -d postgres redis
+npm run test:integration
+```
+
 To run it locally:
 
 ```bash
-docker compose --profile full up -d redis
+docker compose up -d redis
 REDIS_URL=redis://localhost:6379 npx jest --testPathPattern=redis-adapter
 ```
 
@@ -1275,7 +1311,7 @@ Coverage thresholds are enforced in `jest.config.ts`. The current floors are:
 - Lines: 35%
 - Statements: 35%
 
-CI runs `npm run test:unit:coverage` (unit tests with coverage upload) and `npm run test:integration` (integration tests against a PostgreSQL service container) as separate parallel jobs.
+CI runs `npm run test:unit:coverage` (unit tests with coverage upload) and `npm run test:integration` (integration tests against PostgreSQL and Redis service containers) as separate parallel jobs.
 
 ### Load test harness
 

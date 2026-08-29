@@ -3,19 +3,33 @@ import {
   LeaderboardRepository,
   Repositories,
   RoundRepository,
+  RoundListResponse,
   StatsRepository,
 } from "./interfaces";
 
 export class PrismaRoundRepository implements RoundRepository {
-  async listActiveRounds() {
+  async listActiveRounds(): Promise<RoundListResponse> {
     const { default: roundService } = await import("../services/round.service");
     const { rounds, source } = await roundService.getRoundsForApi();
     return { source, rounds };
   }
 
-  async placeBet(roundId: string, address: string, amount: number, side?: "UP" | "DOWN", predictedPrice?: number): Promise<void> {
-    const { default: hackathonService } = await import("../services/hackathon.service");
-    await hackathonService.placeBet(roundId, address, amount, side, predictedPrice);
+  async placeBet(
+    roundId: string,
+    address: string,
+    amount: number,
+    side?: "UP" | "DOWN",
+    predictedPrice?: number,
+  ): Promise<void> {
+    const { default: hackathonService } =
+      await import("../services/hackathon.service");
+    await hackathonService.placeBet(
+      roundId,
+      address,
+      amount,
+      side,
+      predictedPrice,
+    );
   }
 }
 
