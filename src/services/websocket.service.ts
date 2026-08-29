@@ -248,6 +248,13 @@ export class WebSocketService {
 
     // In demo mode, clients join explicit round rooms; skip Prisma round lookup.
     if (config.app.socketDemoMode) {
+      // Broadcast to every existing round room so demo clients that joined a
+      // specific room still receive live ticks, without needing a DB query.
+      for (const room of (this.io?.of('/').adapter.rooms.keys() ?? [])) {
+        if (room.startsWith('round:')) {
+          this.safeEmit({ room, event: WebSocketEvents.PriceUpdateV2, payload });
+        }
+      }
       return;
     }
 

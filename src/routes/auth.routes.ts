@@ -5,7 +5,7 @@ import {
   getChallengeExpiry,
   isChallengeExpired,
 } from "../utils/challenge.util";
-import { generateToken } from "../utils/jwt.util";
+import { generateToken, verifyToken } from "../utils/jwt.util";
 import { verifySignature } from "../services/stellar.service";
 import {
   ChallengeRequestBody,

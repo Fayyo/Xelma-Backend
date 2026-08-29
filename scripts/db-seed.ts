@@ -25,7 +25,7 @@ function run(label: string, command: string, args: string[]): void {
 console.log(`Seeding profile: ${profile}`);
 
 if (profile === "hackathon") {
-  run("Hackathon Drizzle seed", "npx", ["ts-node", "src/db/seed.ts"]);
+  run("Hackathon mock seed", "npx", ["ts-node", "scripts/seed-mock-data.ts"]);
 } else if (profile === "full") {
   run("Prisma mock platform seed", "npx", ["ts-node", "scripts/seed-mock-data.ts"]);
   run("Prisma development seed", "npx", ["ts-node", "prisma/seed.ts"]);

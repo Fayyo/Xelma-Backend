@@ -47,8 +47,8 @@ or from in-memory mock data. This is the highest-level mode switch.
 | Endpoint | `DATA_MODE=live` (default) | `DATA_MODE=mock` |
 |---|---|---|
 | `GET /api/prices` | CoinGecko (30 s cache), falls back to stale cache, then static defaults | Static in-memory array (`mockData.prices`) |
-| `GET /api/rounds` | Drizzle / Postgres (`hackathon_rounds` table) | **Same** — Drizzle is always used for rounds |
-| `GET /api/leaderboard` | Drizzle / Postgres leaderboard table | In-memory seed (`mockLeaderboard`) when `DATA_STORE=memory` |
+| `GET /api/rounds` | Prisma / Postgres (`hackathon_rounds` table) | **Same** — Prisma is always used for rounds |
+| `GET /api/leaderboard` | Prisma / Postgres leaderboard table | In-memory seed (`mockLeaderboard`) when `DATA_STORE=memory` |
 | `GET /api/stats` | Prisma / Postgres aggregation | `MOCK_PLATFORM_STATS` constants (zero-value defaults) |
 | `GET /api/health` | Live Soroban RPC readiness check | Soroban `isReady()` flag only (no RPC call) |
 

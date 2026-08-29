@@ -23,30 +23,33 @@ interface FakeRound {
 let mockUsers: FakeUser[];
 let mockRounds: FakeRound[];
 
-jest.mock('../db/db', () => {
-  const actualSchema = jest.requireActual('../db/schema');
-
+jest.mock('../lib/prisma', () => {
   return {
     __esModule: true,
-    db: {
-      select: () => ({
-        from: (table: unknown) => ({
-          where: async () => {
-            if (table === actualSchema.hackathonUsers) return mockUsers;
-            if (table === actualSchema.hackathonRounds) return mockRounds;
-            return [];
-          },
-        }),
-      }),
-      insert: () => ({ values: async () => undefined }),
-      update: (table: unknown) => ({
-        set: (payload: Record<string, unknown>) => ({
-          where: async () => {
-            const target = table === actualSchema.hackathonUsers ? mockUsers[0] : mockRounds[0];
-            Object.assign(target, payload);
-          },
-        }),
-      }),
+    prisma: {
+      mockLeaderboard: {
+        findUnique: async ({ where }: { where: { address: string } }) =>
+          mockUsers.find(user => user.address === where.address) ?? null,
+        create: async ({ data }: { data: FakeUser }) => {
+          mockUsers.push(data);
+          return data;
+        },
+        update: async ({ data }: { data: Partial<FakeUser> }) => {
+          Object.assign(mockUsers[0], data);
+          return mockUsers[0];
+        },
+      },
+      mockBet: {
+        create: async () => undefined,
+      },
+      mockRound: {
+        findUnique: async ({ where }: { where: { id: string } }) =>
+          mockRounds.find(round => round.id === where.id) ?? null,
+        update: async ({ data }: { data: Partial<FakeRound> }) => {
+          Object.assign(mockRounds[0], data);
+          return mockRounds[0];
+        },
+      },
     },
   };
 });
