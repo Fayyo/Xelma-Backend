@@ -18,6 +18,10 @@ import {
   isValidIdempotencyKey,
 } from "../utils/idempotency.util";
 import {
+  DistributedIdempotencyLockUnavailableError,
+  withDistributedIdempotencyLock,
+} from "../utils/distributed-idempotency-lock";
+import {
   ConflictError,
   ValidationError,
   ErrorCode,
@@ -69,7 +73,7 @@ router.post(
     let lockAcquired = false;
     let operationCompleted = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -132,9 +136,31 @@ router.post(
       }
 
       return sendSuccess(res, data);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       if (error instanceof IdempotencyStoreUnavailableError) {
@@ -189,7 +215,7 @@ router.post(
     let lockAcquired = false;
     let operationCompleted = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -252,12 +278,41 @@ router.post(
       }
 
       return sendSuccess(res, data);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired && !operationCompleted) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
       }
 
-      next(error);
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      return next(error);
     }
   }) as any,
 );
@@ -312,7 +367,7 @@ router.post(
     const endpoint = "/api/bets/claim";
     let lockAcquired = false;
 
-    try {
+    const execute = async () => {
       if (idempotencyKey) {
         if (!isValidIdempotencyKey(idempotencyKey)) {
           throw new ValidationError(
@@ -332,6 +387,13 @@ router.post(
           return res
             .status(lockResult.cachedResponse.status)
             .json(lockResult.cachedResponse.body);
+        }
+
+        if (lockResult.error === IDEMPOTENCY_STORE_UNAVAILABLE) {
+          throw new ExternalServiceError(
+            "Idempotency store unavailable. Please try again.",
+            ErrorCode.EXTERNAL_SERVICE_ERROR
+          );
         }
 
         if (lockResult.error) {
@@ -368,10 +430,39 @@ router.post(
         );
       }
 
-      res.json(responseBody);
+      return res.json(responseBody);
+    };
+
+    try {
+      if (idempotencyKey) {
+        // Fail-closed distributed lock (Redis) in front of the Prisma flow so
+        // concurrent replicas cannot both process the same key.
+        await withDistributedIdempotencyLock(
+          userId,
+          endpoint,
+          idempotencyKey,
+          execute
+        );
+      } else {
+        await execute();
+      }
     } catch (error: any) {
       if (idempotencyKey && lockAcquired) {
         await releaseIdempotencyLock(userId, endpoint, idempotencyKey);
+      }
+
+      if (error instanceof DistributedIdempotencyLockUnavailableError) {
+        return next(new ExternalServiceError(
+          "Distributed idempotency lock unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
+      }
+
+      if (error instanceof IdempotencyStoreUnavailableError) {
+        return next(new ExternalServiceError(
+          "Idempotency store unavailable. Please try again.",
+          ErrorCode.EXTERNAL_SERVICE_ERROR
+        ));
       }
 
       return next(error);
