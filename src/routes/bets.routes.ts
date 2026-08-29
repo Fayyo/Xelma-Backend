@@ -8,7 +8,7 @@ import {
 import { betRateLimiter } from "../middleware/rateLimiter.middleware";
 import { upDownBetSchema, precisionBetSchema, claimWinningsSchema } from "../schemas/bets.schema";
 import betService from "../services/bet.service";
-import { BetStatus } from "../data/bet-store";
+import { BetStatus } from "@prisma/client";
 import {
   acquireIdempotencyLock,
   IDEMPOTENCY_STORE_UNAVAILABLE,
@@ -26,6 +26,7 @@ import {
 } from "../utils/errors";
 import { sendSuccess } from "../utils/response";
 import { serializeBet } from "../serializers/monetary.serializer";
+import { prisma } from "../lib/prisma";
 
 const router = Router();
 
@@ -379,7 +380,7 @@ router.post(
   }),
 );
 
-const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
+const BET_STATUSES: BetStatus[] = ["ACCEPTED", "SUBMITTED", "CONFIRMED", "RESOLVED", "FAILED"];
 
 /**
  * @swagger
@@ -419,7 +420,7 @@ const BET_STATUSES: BetStatus[] = ["STUB", "SUBMITTED", "CONFIRMED", "FAILED"];
 router.get(
   "/reconciliation",
   requireAdmin,
-  ((req: Request, res: Response, next: NextFunction) => {
+  (async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { address, roundId, status } = req.query;
 
@@ -429,22 +430,34 @@ router.get(
         );
       }
 
-      const bets = betService.getBets({
-        address: address as string | undefined,
+      // If address is provided, look up userId
+      let userId: string | undefined;
+      if (address) {
+        const user = await prisma.user.findUnique({
+          where: { walletAddress: address as string },
+          select: { id: true },
+        });
+        userId = user?.id;
+      }
+
+      const bets = await betService.getBets({
+        userId,
         roundId: roundId as string | undefined,
         status: status as BetStatus | undefined,
       });
 
+      const summary = await betService.getReconciliationSummary();
+
       res.json({
         success: true,
-        summary: betService.getReconciliationSummary(),
+        summary,
         count: bets.length,
         bets: bets.map((bet) => serializeBet(bet as unknown as Record<string, unknown>)),
       });
     } catch (error) {
       next(error);
     }
-  }) as any,
+  }),
 );
 
 /**

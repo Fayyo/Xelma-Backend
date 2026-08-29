@@ -9,6 +9,7 @@ import { prisma } from '../lib/prisma';
 import { RoundLifecycleOutcome } from '../types/round.types';
 import websocketService from './websocket.service';
 import outboxService, { OutboxDispatchHandlers, getOutboxPollIntervalSeconds } from './outbox.service';
+import reconciliationService from './reconciliation.service';
 import {
    schedulerItemsProcessedTotal,
    schedulerRunsTotal,
@@ -78,6 +79,19 @@ class SchedulerService {
             await this.cleanupOutbox();
          })
       );
+
+      // Bet reconciliation — runs every minute to check stranded SUBMITTED bets.
+      // Only runs when Soroban is configured (has admin/oracle keys).
+      if (process.env.SOROBAN_ADMIN_SECRET && process.env.SOROBAN_ORACLE_SECRET) {
+         logger.info('Starting bet reconciliation scheduler (interval: 60s)');
+         this.cronTasks.push(
+            cron.schedule('* * * * *', async () => {
+               await this.reconcileBets();
+            })
+         );
+      } else {
+         logger.info('Bet reconciliation scheduler disabled (Soroban keys not configured)');
+      }
 
       if (process.env.AUTO_RESOLVE_ENABLED !== 'true') {
          logger.info('Auto-resolution scheduler is disabled');
@@ -335,23 +349,58 @@ class SchedulerService {
       }
    }
 
-   /**
-    * Build the dispatch handlers used by the outbox poller.
-    * Kept here (not in outbox.service) to avoid a circular import:
-    * outbox.service → notification.service → (no cycle)
-    * outbox.service → websocket.service → (no cycle)
-    * scheduler.service already imports both, so wiring happens here.
-    */
-   private buildOutboxHandlers(): OutboxDispatchHandlers {
-      return {
-         notificationCreate: async (payload) => {
-            return notificationService.createNotificationForRetry(payload);
-         },
-         websocketEmit: ({ eventName, room, data }) => {
-            websocketService.replayEmit(eventName, { room, data });
-         },
-      };
-   }
+/**
+     * Build the dispatch handlers used by the outbox poller.
+     * Kept here (not in outbox.service) to avoid a circular import:
+     * outbox.service → notification.service → (no cycle)
+     * outbox.service → websocket.service → (no cycle)
+     * scheduler.service already imports both, so wiring happens here.
+     */
+    private buildOutboxHandlers(): OutboxDispatchHandlers {
+       return {
+          notificationCreate: async (payload) => {
+             return notificationService.createNotificationForRetry(payload);
+          },
+          websocketEmit: ({ eventName, room, data }) => {
+             websocketService.replayEmit(eventName, { room, data });
+          },
+betAccepted: async (payload) => {
+             websocketService.emitBetAccepted({
+               roundId: payload.roundId ?? undefined,
+               address: '', // Will be filled from user lookup if needed
+               amount: payload.amount.toString(),
+               side: payload.side,
+               mode: payload.mode,
+               state: payload.state,
+               txHash: payload.txHash,
+             });
+           },
+          betConfirmed: async (payload) => {
+             websocketService.replayEmit('bet:confirmed', {
+               room: 'round',
+               data: { betId: payload.betId, txHash: payload.txHash, mode: payload.mode },
+             });
+             if (payload.roundId) {
+               websocketService.replayEmit('bet:confirmed', {
+                 room: `round:${payload.roundId}`,
+                 data: { betId: payload.betId, txHash: payload.txHash, mode: payload.mode },
+               });
+             }
+          },
+          betResolved: async (payload) => {
+             websocketService.replayEmit('bet:resolved', {
+               room: `user:${payload.userId}`,
+               data: { betId: payload.betId, roundId: payload.roundId, won: payload.won, payout: payload.payout },
+             });
+          },
+          betFailed: async (payload) => {
+             websocketService.replayEmit('bet:failed', {
+               room: `user:${payload.userId}`,
+               data: { betId: payload.betId, failureReason: payload.failureReason },
+             });
+          },
+       };
+    }
 
    /**
     * Poll the outbox for PENDING events and dispatch them.
@@ -389,16 +438,55 @@ class SchedulerService {
       );
    }
 
-   private async cleanupOutboxInternal(): Promise<void> {
-      try {
-         const count = await outboxService.cleanupProcessed();
-         if (count > 0) {
-            logger.info(`Outbox cleanup: removed ${count} processed event(s)`);
-         }
-      } catch (error) {
-         logger.error('Error in outbox cleanup scheduler:', error);
-      }
-   }
+private async cleanupOutboxInternal(): Promise<void> {
+       try {
+          const count = await outboxService.cleanupProcessed();
+          if (count > 0) {
+             logger.info(`Outbox cleanup: removed ${count} processed event(s)`);
+          }
+       } catch (error) {
+          logger.error('Error in outbox cleanup scheduler:', error);
+       }
+    }
+
+    /**
+     * Reconcile stranded SUBMITTED bets by checking their on-chain status.
+     * Protected by a distributed lock so only one instance runs per interval.
+     * @visibleForTesting
+     */
+    async reconcileBets(): Promise<void> {
+       await withDistributedLock(
+          'reconcile-bets',
+          () => this.reconcileBetsInternal(),
+          { ttlSeconds: 70 }
+       );
+    }
+
+    private async reconcileBetsInternal(): Promise<void> {
+       try {
+          const result = await reconciliationService.reconcileSubmittedBets();
+          if (result.checked > 0) {
+             logger.info('Bet reconciliation completed', result);
+             // Increment once per checked bet
+             for (let i = 0; i < result.checked; i++) {
+                schedulerItemsProcessedTotal.inc({
+                   job: 'bet_reconciliation',
+                   outcome: 'success',
+                });
+             }
+          }
+          schedulerRunsTotal.inc({
+             job: 'bet_reconciliation',
+             outcome: result.errors > 0 ? 'failure' : 'success',
+          });
+       } catch (error) {
+          logger.error('Error in bet reconciliation scheduler:', error);
+          schedulerRunsTotal.inc({
+             job: 'bet_reconciliation',
+             outcome: 'failure',
+          });
+       }
+    }
 }
 
 export default new SchedulerService();

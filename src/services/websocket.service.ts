@@ -28,6 +28,9 @@ export const WebSocketEvents = {
   NotificationUnreadCount: 'notification:unread-count',
   RoundUpdate: 'round_update',
   PriceUpdateV2: 'price_update',
+  BetConfirmed: 'bet:confirmed',
+  BetResolved: 'bet:resolved',
+  BetFailed: 'bet:failed',
 } as const;
 
 type EventPayloadMap = {
