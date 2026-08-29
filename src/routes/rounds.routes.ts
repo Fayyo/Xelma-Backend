@@ -1,19 +1,31 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import roundService from '../services/round.service';
-import resolutionService from '../services/resolution.service';
-import simulationService from '../services/simulation.service';
-import { requireAdmin, requireOracle, AuthenticatedRequest } from '../middleware/auth.middleware';
-import { asyncHandler } from '../middleware/errorHandler.middleware';
-import { toDecimal } from '../utils/decimal.util';
-import { serializeRound } from '../serializers/monetary.serializer';
-import { adminRoundRateLimiter, betRateLimiter, oracleResolveRateLimiter } from '../middleware/rateLimiter.middleware';
-import { validate } from '../middleware/validate.middleware';
-import { sendSuccess } from '../utils/response';
-import { startRoundSchema, resolveRoundSchema } from '../schemas/rounds.schema';
-import { betSchema, upDownBetSchema, precisionBetSchema } from '../schemas/bets.schema';
-import { NotFoundError } from '../utils/errors';
-import { getRepositories } from '../repositories';
-import config from '../config';
+import { Router, Request, Response, NextFunction } from "express";
+import roundService from "../services/round.service";
+import resolutionService from "../services/resolution.service";
+import simulationService from "../services/simulation.service";
+import {
+  requireAdmin,
+  requireOracle,
+  AuthenticatedRequest,
+} from "../middleware/auth.middleware";
+import { asyncHandler } from "../middleware/errorHandler.middleware";
+import { toDecimal } from "../utils/decimal.util";
+import { serializeRound } from "../serializers/monetary.serializer";
+import {
+  adminRoundRateLimiter,
+  betRateLimiter,
+  oracleResolveRateLimiter,
+} from "../middleware/rateLimiter.middleware";
+import { validate } from "../middleware/validate.middleware";
+import { sendSuccess } from "../utils/response";
+import { startRoundSchema, resolveRoundSchema } from "../schemas/rounds.schema";
+import {
+  betSchema,
+  upDownBetSchema,
+  precisionBetSchema,
+} from "../schemas/bets.schema";
+import { NotFoundError } from "../utils/errors";
+import { getRepositories } from "../repositories";
+import config from "../config";
 
 const router = Router();
 
@@ -29,10 +41,13 @@ const router = Router();
  *       200:
  *         description: Active rounds with source metadata
  */
-router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const { source, rounds } = await roundService.getRoundsForApi();
-    sendSuccess(res, { source, rounds: rounds.map((round: Record<string, unknown>) => serializeRound(round)) });
+    sendSuccess(res, {
+      source,
+      rounds: rounds.map((round) => serializeRound(round)),
+    });
   } catch (err) {
     next(err);
   }
@@ -86,9 +101,14 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
  *       409:
  *         description: Conflict - active round exists
  */
-router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.post(
+  "/start",
+  requireAdmin,
+  adminRoundRateLimiter,
+  validate(startRoundSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { mode, startPrice, duration, priceRanges } = req.body;
-    const gameMode = mode === 0 ? 'UP_DOWN' : 'LEGENDS';
+    const gameMode = mode === 0 ? "UP_DOWN" : "LEGENDS";
     const round = await roundService.startRound(
       gameMode,
       startPrice,
@@ -97,20 +117,21 @@ router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSc
     );
 
     res.json({
-        success: true,
-        round: serializeRound({
-            id: round.id,
-            mode: round.mode,
-            status: round.status,
-            startTime: round.startTime,
-            endTime: round.endTime,
-            startPrice: round.startPrice,
-            sorobanRoundId: round.sorobanRoundId,
-            isSoroban: round.isSoroban,
-            priceRanges: round.priceRanges,
-        }),
+      success: true,
+      round: serializeRound({
+        id: round.id,
+        mode: round.mode,
+        status: round.status,
+        startTime: round.startTime,
+        endTime: round.endTime,
+        startPrice: round.startPrice,
+        sorobanRoundId: round.sorobanRoundId,
+        isSoroban: round.isSoroban,
+        priceRanges: round.priceRanges,
+      }),
     });
-}));
+  }),
+);
 
 /**
  * @swagger
@@ -123,21 +144,24 @@ router.post('/start', requireAdmin, adminRoundRateLimiter, validate(startRoundSc
  *       200:
  *         description: Active rounds
  */
-router.get('/active', async (req: Request, res: Response, next: NextFunction) => {
+router.get(
+  "/active",
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { source, rounds } = await roundService.getRoundsForApi();
+      const { source, rounds } = await roundService.getRoundsForApi();
 
-        const serializedRounds = rounds.map((round: Record<string, unknown>) => serializeRound(round));
+      const serializedRounds = rounds.map((round) => serializeRound(round));
 
-        res.json({
-            success: true,
-            source,
-            rounds: serializedRounds,
-        });
+      res.json({
+        success: true,
+        source,
+        rounds: serializedRounds,
+      });
     } catch (error) {
-        next(error);
+      next(error);
     }
-});
+  },
+);
 
 /**
  * @swagger
@@ -156,29 +180,34 @@ router.get('/active', async (req: Request, res: Response, next: NextFunction) =>
  *       404:
  *         description: Round not found
  */
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id } = req.params;
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
 
-        const round = await roundService.getRound(id);
+    const round = await roundService.getRound(id);
 
-        if (!round) {
-            return next(new NotFoundError('Round not found'));
-        }
-
-         res.json({
-            success: true,
-            round: serializeRound(round),
-        });
-    } catch (error) {
-        next(error);
+    if (!round) {
+      return next(new NotFoundError("Round not found"));
     }
+
+    res.json({
+      success: true,
+      round: serializeRound(round),
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Stub bet endpoint — for logging/analytics only; on-chain bets go via Soroban
-router.post('/:id/bet', betRateLimiter, validate(betSchema), (_req: Request, res: Response) => {
-  res.json({ success: true, message: 'Bet recorded (stub)' });
-});
+router.post(
+  "/:id/bet",
+  betRateLimiter,
+  validate(betSchema),
+  (_req: Request, res: Response) => {
+    res.json({ success: true, message: "Bet recorded (stub)" });
+  },
+);
 
 /**
  * @swagger
@@ -215,32 +244,43 @@ router.post('/:id/bet', betRateLimiter, validate(betSchema), (_req: Request, res
  *       404:
  *         description: Round not found
  */
-router.post('/:id/resolve', requireOracle, oracleResolveRateLimiter, validate(resolveRoundSchema), asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+router.post(
+  "/:id/resolve",
+  requireOracle,
+  oracleResolveRateLimiter,
+  validate(resolveRoundSchema),
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { finalPrice } = req.body;
 
-    const { outcome, round } = await resolutionService.resolveRound(id, toDecimal(finalPrice));
+    const { outcome, round } = await resolutionService.resolveRound(
+      id,
+      toDecimal(finalPrice),
+    );
 
     if (!round) {
-        return res.status(404).json({ success: false, error: "Round not found" });
+      return res.status(404).json({ success: false, error: "Round not found" });
     }
 
     res.json({
-        success: true,
-        outcome,
-        round: {
-            ...serializeRound({
-                id: round.id,
-                status: round.status,
-                startPrice: round.startPrice,
-                endPrice: round.endPrice,
-                resolvedAt: round.resolvedAt,
-            }),
-            predictions: round.predictions ? round.predictions.length : 0,
-            winners: round.predictions ? round.predictions.filter((p: any) => p.won === true).length : 0,
-        },
+      success: true,
+      outcome,
+      round: {
+        ...serializeRound({
+          id: round.id,
+          status: round.status,
+          startPrice: round.startPrice,
+          endPrice: round.endPrice,
+          resolvedAt: round.resolvedAt,
+        }),
+        predictions: round.predictions ? round.predictions.length : 0,
+        winners: round.predictions
+          ? round.predictions.filter((p: any) => p.won === true).length
+          : 0,
+      },
     });
-}));
+  }),
+);
 
 /**
  * @swagger
@@ -273,61 +313,90 @@ router.post('/:id/resolve', requireOracle, oracleResolveRateLimiter, validate(re
  *       404:
  *         description: Round not found
  */
-router.post('/:id/simulate', async (req: Request, res: Response, next: NextFunction) => {
+router.post(
+  "/:id/simulate",
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
-        if (config.app.nodeEnv === 'production' && !config.app.enableSimulation) {
-            return res.status(403).json({ success: false, error: 'Simulation disabled in production unless ENABLE_SIMULATION=true' });
-        }
+      if (config.app.nodeEnv === "production" && !config.app.enableSimulation) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+            error:
+              "Simulation disabled in production unless ENABLE_SIMULATION=true",
+          });
+      }
 
-        const { id } = req.params;
-        const { finalPrice } = req.body;
+      const { id } = req.params;
+      const { finalPrice } = req.body;
 
-        if (finalPrice === undefined || finalPrice === null) {
-            return res.status(400).json({ success: false, error: 'finalPrice is required' });
-        }
+      if (finalPrice === undefined || finalPrice === null) {
+        return res
+          .status(400)
+          .json({ success: false, error: "finalPrice is required" });
+      }
 
-        const result = await simulationService.simulateRound(id, finalPrice);
-        if (!result) {
-            return res.status(404).json({ success: false, error: 'Round not found' });
-        }
+      const result = await simulationService.simulateRound(id, finalPrice);
+      if (!result) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Round not found" });
+      }
 
-        res.json({
-            success: true,
-            roundId: result.roundId,
-            simulatedPrice: result.simulatedPrice,
-            mode: result.mode,
-            startPrice: result.startPrice,
-            winningSide: result.winningSide,
-            winningRange: result.winningRange,
-            predictions: result.predictions,
-            summary: result.summary,
-        });
+      res.json({
+        success: true,
+        roundId: result.roundId,
+        simulatedPrice: result.simulatedPrice,
+        mode: result.mode,
+        startPrice: result.startPrice,
+        winningSide: result.winningSide,
+        winningRange: result.winningRange,
+        predictions: result.predictions,
+        summary: result.summary,
+      });
     } catch (error) {
-        next(error);
+      next(error);
     }
-});
+  },
+);
 
 // Hackathon mutation endpoints - with Zod validation
-router.post('/hackathon/up-down/:id/bet', betRateLimiter, validate(upDownBetSchema), (async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const { address, amount, side } = req.body;
-    await getRepositories().rounds.placeBet(id, address, amount, side);
-    sendSuccess(res, { message: 'Bet recorded (stub)' });
-  } catch (err) {
-    next(err);
-  }
-}) as any);
+router.post(
+  "/hackathon/up-down/:id/bet",
+  betRateLimiter,
+  validate(upDownBetSchema),
+  (async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { address, amount, side } = req.body;
+      await getRepositories().rounds.placeBet(id, address, amount, side);
+      sendSuccess(res, { message: "Bet recorded (stub)" });
+    } catch (err) {
+      next(err);
+    }
+  }) as any,
+);
 
-router.post('/hackathon/precision/:id/bet', betRateLimiter, validate(precisionBetSchema), (async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const { address, amount, predictedPrice } = req.body;
-    await getRepositories().rounds.placeBet(id, address, amount, undefined, predictedPrice);
-    sendSuccess(res, { message: 'Precision bet recorded (stub)' });
-  } catch (err) {
-    next(err);
-  }
-}) as any);
+router.post(
+  "/hackathon/precision/:id/bet",
+  betRateLimiter,
+  validate(precisionBetSchema),
+  (async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { address, amount, predictedPrice } = req.body;
+      await getRepositories().rounds.placeBet(
+        id,
+        address,
+        amount,
+        undefined,
+        predictedPrice,
+      );
+      sendSuccess(res, { message: "Precision bet recorded (stub)" });
+    } catch (err) {
+      next(err);
+    }
+  }) as any,
+);
 
 export default router;
