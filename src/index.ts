@@ -54,6 +54,7 @@ validateEnv();
 logBindingsValidation();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
+logger.info(`Safety profile: ${config.app.safetyProfile.toUpperCase()}`);
 logger.info(
   'Soroban configuration resolved',
   formatResolvedSorobanConfigForLog(resolveSorobanEnvVars(), {
