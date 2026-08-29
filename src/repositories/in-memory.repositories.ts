@@ -1,44 +1,14 @@
-import { betStore, StoredRound } from "../data/bet-store";
+import { betStore } from "../data/bet-store";
 import { mockLeaderboard, MOCK_PLATFORM_STATS } from "../data/mockData";
 import {
   LeaderboardRepository,
   Repositories,
-  RoundListResponse,
   RoundRepository,
   StatsRepository,
 } from "./interfaces";
 import { PlatformStats } from "../services/stats.service";
 
-function storedRoundToMockPredictionRound(r: StoredRound) {
-  if (r.mode === "updown") {
-    return {
-      id: r.id,
-      asset: r.asset,
-      mode: "updown" as const,
-      status: r.status as "live" | "new",
-      startPrice: r.startPrice,
-      poolUp: r.poolUp,
-      poolDown: r.poolDown,
-      closesAt: r.closesAt,
-    };
-  }
-  return {
-    id: r.id,
-    asset: r.asset,
-    mode: "precision" as const,
-    status: r.status as "live" | "new",
-    startPrice: r.startPrice,
-    totalPool: r.totalPool,
-    predictionCount: r.predictionCount,
-    closesAt: r.closesAt,
-  };
-}
-
 export class InMemoryRoundRepository implements RoundRepository {
-  async listActiveRounds(): Promise<RoundListResponse> {
-    return betStore.getRounds().map(storedRoundToMockPredictionRound);
-  }
-
   async placeBet(
     roundId: string,
     _address: string,

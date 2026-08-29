@@ -43,6 +43,8 @@ const router = Router();
  */
 router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   try {
+    // Source fallback order: Soroban on-chain → database → mock data.
+    // Controlled by roundService.getRoundsForApi(); see round.service.ts.
     const { source, rounds } = await roundService.getRoundsForApi();
     sendSuccess(res, {
       source,
@@ -133,35 +135,9 @@ router.post(
   }),
 );
 
-/**
- * @swagger
- * /api/rounds/active:
- *   get:
- *     summary: Get active rounds
- *     description: Returns active rounds. Delegates to shared round service with fallback chain.
- *     tags: [rounds]
- *     responses:
- *       200:
- *         description: Active rounds
- */
-router.get(
-  "/active",
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { source, rounds } = await roundService.getRoundsForApi();
-
-      const serializedRounds = rounds.map((round) => serializeRound(round));
-
-      res.json({
-        success: true,
-        source,
-        rounds: serializedRounds,
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
+// NOTE: GET /active was removed — it duplicated GET / (both called
+// roundService.getRoundsForApi()). Callers should use GET / instead.
+// Kept here as a comment for discoverability; see issue #370.
 
 /**
  * @swagger
