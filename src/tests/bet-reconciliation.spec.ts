@@ -182,7 +182,7 @@ describe("Bet reconciliation lifecycle (#403)", () => {
       const userId = "user-1";
       mockUserFindUnique.mockResolvedValue({ id: userId, walletAddress: ADDRESS });
       mockRoundFindFirst.mockResolvedValue({ id: "round-1" });
-      mockBetCreate.mockResolvedValue({
+      const precisionBet = {
         id: "bet-1",
         userId,
         roundId: "round-1",
@@ -199,7 +199,9 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         failedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+      };
+      mockBetCreate.mockResolvedValue(precisionBet);
+      mockBetFindUnique.mockResolvedValue(precisionBet);
       mockOutboxCreate.mockResolvedValue({ id: "outbox-1" });
 
       const result = await betService.recordPrecisionBet({
@@ -305,7 +307,7 @@ describe("Bet reconciliation lifecycle (#403)", () => {
       const userId = "user-1";
       mockUserFindUnique.mockResolvedValue({ id: userId, walletAddress: ADDRESS });
       mockRoundFindFirst.mockResolvedValue({ id: "round-1" });
-      mockBetCreate.mockResolvedValue({
+      const originalBet = {
         id: betId,
         userId,
         roundId: "round-1",
@@ -322,7 +324,9 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         failedAt: null,
         createdAt: new Date("2024-01-01"),
         updatedAt: new Date("2024-01-01"),
-      });
+      };
+      mockBetCreate.mockResolvedValue(originalBet);
+      mockBetFindUnique.mockResolvedValue(originalBet);
       mockOutboxCreate.mockResolvedValue({ id: "outbox-1" });
 
       await betService.recordUpDownBet({
@@ -605,6 +609,24 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      mockBetFindUnique.mockResolvedValue({
+        id: betId,
+        userId,
+        roundId: "round-1",
+        mode: BetMode.UP_DOWN,
+        side: "UP",
+        amount: 10,
+        predictedPrice: null,
+        status: BetStatus.SUBMITTED,
+        txHash: "0xabc",
+        failureReason: null,
+        submittedAt: new Date(),
+        confirmedAt: null,
+        resolvedAt: null,
+        failedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
       mockOutboxCreate.mockResolvedValue({ id: "outbox-1" });
       ;(sorobanService.placeBet as jest.Mock).mockResolvedValue({
         state: "on-chain-success",
@@ -619,11 +641,10 @@ describe("Bet reconciliation lifecycle (#403)", () => {
 
       const bet = await betService.getBet(result.betId)!;
 
-      expect(result.status).toBe(BetStatus.CONFIRMED);
-      expect(bet.status).toBe(BetStatus.CONFIRMED);
+      expect(result.status).toBe(BetStatus.SUBMITTED);
+      expect(bet.status).toBe(BetStatus.SUBMITTED);
       expect(bet.txHash).toBe("0xabc");
       expect(bet.submittedAt).toEqual(expect.any(Date));
-      expect(bet.confirmedAt).toEqual(expect.any(Date));
     });
 
     it("marks a successful Precision submission CONFIRMED with its txHash", async () => {
@@ -649,6 +670,24 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      mockBetFindUnique.mockResolvedValue({
+        id: betId,
+        userId,
+        roundId: "round-1",
+        mode: BetMode.PRECISION,
+        side: null,
+        amount: 5,
+        predictedPrice: 0.12,
+        status: BetStatus.SUBMITTED,
+        txHash: "0x789",
+        failureReason: null,
+        submittedAt: new Date(),
+        confirmedAt: null,
+        resolvedAt: null,
+        failedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
       mockOutboxCreate.mockResolvedValue({ id: "outbox-1" });
       ;(sorobanService.placePrecisionBet as jest.Mock).mockResolvedValue({
         state: "on-chain-success",
@@ -663,7 +702,8 @@ describe("Bet reconciliation lifecycle (#403)", () => {
 
       const bet = await betService.getBet(result.betId)!;
 
-      expect(bet.status).toBe(BetStatus.CONFIRMED);
+      expect(result.status).toBe(BetStatus.SUBMITTED);
+      expect(bet.status).toBe(BetStatus.SUBMITTED);
       expect(bet.txHash).toBe("0x789");
     });
 
@@ -684,6 +724,24 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         txHash: null,
         failureReason: null,
         submittedAt: null,
+        confirmedAt: null,
+        resolvedAt: null,
+        failedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockBetFindUnique.mockResolvedValue({
+        id: betId,
+        userId,
+        roundId: "round-1",
+        mode: BetMode.UP_DOWN,
+        side: "UP",
+        amount: 10,
+        predictedPrice: null,
+        status: BetStatus.SUBMITTED,
+        txHash: null,
+        failureReason: null,
+        submittedAt: new Date(),
         confirmedAt: null,
         resolvedAt: null,
         failedAt: null,
@@ -751,6 +809,26 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         betService.recordUpDownBet({ address: ADDRESS, amount: 10, side: "UP" })
       ).rejects.toThrow("Contract error: insufficient balance");
 
+      mockBetFindMany.mockResolvedValue([
+        {
+          id: betId,
+          userId,
+          roundId: "round-1",
+          mode: BetMode.UP_DOWN,
+          side: "UP",
+          amount: 10,
+          predictedPrice: null,
+          status: BetStatus.FAILED,
+          txHash: null,
+          failureReason: "Contract error: insufficient balance",
+          submittedAt: null,
+          confirmedAt: null,
+          resolvedAt: null,
+          failedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
       const bets = await betService.getBets({ userId });
 
       expect(bets).toHaveLength(1);
@@ -820,6 +898,25 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      const failedBet = {
+        id: betId,
+        userId,
+        roundId: "round-1",
+        mode: BetMode.UP_DOWN,
+        side: "UP",
+        amount: 10,
+        predictedPrice: null,
+        status: BetStatus.FAILED,
+        txHash: null,
+        failureReason: "RPC unavailable",
+        submittedAt: null,
+        confirmedAt: null,
+        resolvedAt: null,
+        failedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockBetFindUnique.mockResolvedValue(failedBet);
       mockOutboxCreate.mockResolvedValue({ id: "outbox-1" });
       ;(sorobanService.placeBet as jest.Mock).mockRejectedValue(
         new Error("RPC unavailable")
@@ -829,14 +926,12 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         betService.recordUpDownBet({ address: ADDRESS, amount: 10, side: "UP" })
       ).rejects.toThrow();
 
-      expect(betAuditService.emitBetFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          address: ADDRESS,
-          mode: "UP_DOWN",
-          status: BetStatus.FAILED,
-          failureReason: "RPC unavailable",
-        })
+      const failedCall = (mockOutboxCreate as jest.Mock).mock.calls.find(
+        (c: any[]) => c[0]?.data?.eventType === "BET_FAILED"
       );
+      expect(failedCall).toBeDefined();
+      expect(failedCall[0].data.payload.failureReason).toBe("RPC unavailable");
+      expect(failedCall[0].data.payload.mode).toBe("UP_DOWN");
       expect(betAuditService.emitBetAccepted).not.toHaveBeenCalled();
     });
 
@@ -872,6 +967,26 @@ describe("Bet reconciliation lifecycle (#403)", () => {
         betService.recordUpDownBet({ address: ADDRESS, amount: 42, side: "UP" })
       ).rejects.toThrow();
 
+      mockBetFindMany.mockResolvedValue([
+        {
+          id: betId,
+          userId,
+          roundId: "round-1",
+          mode: BetMode.UP_DOWN,
+          side: "UP",
+          amount: 42,
+          predictedPrice: null,
+          status: BetStatus.FAILED,
+          txHash: null,
+          failureReason: "boom",
+          submittedAt: null,
+          confirmedAt: null,
+          resolvedAt: null,
+          failedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
       const bets = await betService.getBets({ status: BetStatus.FAILED });
 
       expect(bets).toHaveLength(1);
@@ -972,6 +1087,7 @@ describe("Bet reconciliation lifecycle (#403)", () => {
     it("filters by status", async () => {
       const betId = "bet-1";
       const userId = "user-1";
+      const userId2 = "user-2";
       mockUserFindUnique.mockResolvedValue({ id: userId, walletAddress: ADDRESS });
       mockRoundFindFirst.mockResolvedValue({ id: "round-1" });
       mockBetCreate.mockResolvedValue({
