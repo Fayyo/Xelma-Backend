@@ -9,6 +9,8 @@ dotenv.config();
 // Type definitions
 // ---------------------------------------------------------------------------
 
+export type SafetyProfile = "production" | "demo";
+
 export interface AppConfig {
   port: number;
   nodeEnv: "development" | "production" | "test";
@@ -22,6 +24,12 @@ export interface AppConfig {
   enableMultiplayerSocial: boolean;
   /** Lightweight Socket.IO without Prisma chat/session (hackathon demos). */
   socketDemoMode: boolean;
+  /**
+   * Safety profile controlling money-path guardrails.
+   * "production" — fail-closed: BET_STUB_MODE forbidden, Soroban secrets required.
+   * "demo"       — fail-open: stub mode allowed, secrets optional.
+   */
+  safetyProfile: SafetyProfile;
 }
 
 export interface JwtConfig {
@@ -101,6 +109,13 @@ function buildConfig(): Config {
   const v = createValidator();
   const env = process.env;
 
+  const safetyProfile: SafetyProfile = v.oneOf(
+    env.SAFETY_PROFILE,
+    "SAFETY_PROFILE",
+    ["production", "demo"] as const,
+    "demo",
+  );
+
   const app: AppConfig = {
     port: v.port(env.PORT, "PORT", 3000),
     nodeEnv: v.oneOf(
@@ -134,6 +149,7 @@ function buildConfig(): Config {
           : undefined),
       false,
     ),
+    safetyProfile,
   };
 
   const jwt: JwtConfig = {
