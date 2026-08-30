@@ -4,9 +4,10 @@ import path from 'path';
 describe('Node version startup check', () => {
   it('exits with code 1 and an error message if Node.js version is below 22', () => {
     try {
-      execSync('NODE_ENV=production npx -y -p node@18 node dist/index.js', {
+      execSync('npx -y -p node@18 node dist/index.js', {
         cwd: path.resolve(__dirname, '../../'),
         stdio: 'pipe',
+        env: { ...process.env, NODE_ENV: 'production' },
       });
       // Should not reach here
       expect(true).toBe(false);

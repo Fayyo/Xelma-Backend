@@ -8,15 +8,15 @@ const PARTIAL_REDACT_KEY = /^(walletaddress|wallet[_-]?address|address)$/i;
 
 function redactScalar(value: unknown, key?: string): unknown {
   if (value == null) return value;
+  if (typeof value === "string" && /Bearer\s+\S+/i.test(value)) {
+    return "Bearer [REDACTED]";
+  }
   if (key && SENSITIVE_KEY.test(key)) {
     return "[REDACTED]";
   }
   if (key && PARTIAL_REDACT_KEY.test(key) && typeof value === "string") {
     if (value.length <= 8) return "[REDACTED]";
     return `${value.slice(0, 4)}…${value.slice(-4)}`;
-  }
-  if (typeof value === "string" && /Bearer\s+\S+/i.test(value)) {
-    return "Bearer [REDACTED]";
   }
   return value;
 }
