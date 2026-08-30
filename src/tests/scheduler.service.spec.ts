@@ -4,9 +4,9 @@ jest.mock("node-cron", () => ({
   schedule: jest.fn().mockReturnValue({ stop: jest.fn() }),
 }));
 
-jest.mock("../utils/distributed-lock", () => ({
-  withDistributedLock: jest.fn((lockName: string, fn: () => any) => fn()),
-}));
+jest.mock("../utils/distributed-lock", () =>
+  require("./helpers/distributed-lock.mock").passThroughLockModule(),
+);
 
 jest.mock("../services/oracle", () => ({
   __esModule: true,
