@@ -20,7 +20,10 @@ const REPO_URL = "https://github.com/TevaLabs/Xelma-Blockchain.git";
 const BRANCH = "main";
 const SUBDIR = "bindings";
 const DEST = path.resolve(__dirname, "..", "vendor", "xelma-bindings");
-const PIN_PATH = path.join(DEST, ".pin.json");
+// Repo metadata — deliberately OUTSIDE vendor/ so `rm -rf vendor/xelma-bindings`
+// cannot take the expected revision with it. Shared with the runtime validator
+// in src/utils/bindings-validator.ts; see docs/bindings-upgrade.md.
+const PIN_PATH = path.resolve(__dirname, "..", "bindings.pin.json");
 
 /** tsconfig override for CJS build */
 const CJS_TSCONFIG = {
@@ -128,7 +131,10 @@ function main() {
 
 function readPin() {
   if (!fs.existsSync(PIN_PATH)) {
-    throw new Error(`Missing ${path.relative(process.cwd(), PIN_PATH)}.`);
+    throw new Error(
+      `Missing ${path.relative(process.cwd(), PIN_PATH)}. It records the expected ` +
+        "@tevalabs/xelma-bindings commit and contract surface.",
+    );
   }
 
   let pin;
@@ -168,18 +174,34 @@ function checkPin() {
     );
   }
 
-  for (const artifact of [
+  const requiredArtifacts = pin.requiredArtifacts || [
     "dist/index.js",
     "dist/cjs/index.js",
     "package.json",
-  ]) {
+  ];
+  for (const artifact of requiredArtifacts) {
     if (!fs.existsSync(path.join(DEST, artifact))) {
       throw new Error(
         `Missing vendored binding artifact: ${path.join("vendor/xelma-bindings", artifact)}.`,
       );
     }
   }
-  console.log(`[install-bindings] Pin verified: ${pin.commitSha}`);
+  const declared = Object.keys(pin.requiredMethods || {});
+  if (declared.length === 0) {
+    throw new Error(
+      `${path.relative(process.cwd(), PIN_PATH)} declares no requiredMethods; ` +
+        "the contract surface check would be a no-op.",
+    );
+  }
+
+  console.log(
+    `[install-bindings] Pin verified: ${pin.commitSha} ` +
+      `(${declared.length} required contract methods declared).`,
+  );
+  console.log(
+    "[install-bindings] Run `npm run build && npm run check:bindings:abi` for the " +
+      "full contract-surface check.",
+  );
 }
 
 function patchPackageJson(pkgPath) {

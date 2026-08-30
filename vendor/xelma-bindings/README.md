@@ -90,8 +90,20 @@ As long as your editor is configured to show JavaScript/TypeScript documentation
 
 ## Backend vendor pin upgrades
 
-The backend records the expected upstream revision in `vendor/xelma-bindings/.pin.json` and the revision used to build the checked-in output in `vendor/xelma-bindings/.commit-sha`.
+The backend records the expected upstream revision **and the contract surface it
+depends on** in `bindings.pin.json` at the repo root (not in this directory, so
+deleting `vendor/xelma-bindings` cannot lose it). `.commit-sha` in this folder
+records the revision the checked-in `dist/` was actually built from.
 
-Verify the current vendor locally with `npm run check:bindings`. To deliberately upgrade it, review the intended commit, update `commitSha` in `.pin.json`, then run `node scripts/install-bindings.js --refresh`. The installer fetches that exact commit, builds ESM and CommonJS output, and writes `.commit-sha`.
+```bash
+npm run check:bindings                       # revision + build artifacts (fast, no install)
+npm run build && npm run check:bindings:abi  # + TypeScript surface + contract ABI
+```
 
-Run `npm run check:bindings`, `npm run lint`, and the relevant tests before review. CI runs the same pin check and fails if the marker, manifest, or required build artifacts drift. Do not edit `.commit-sha` without rebuilding the bindings.
+To upgrade deliberately: review the intended commit, update `commitSha` in
+`bindings.pin.json`, then run `node scripts/install-bindings.js --refresh`. The
+installer fetches that exact commit, builds ESM and CommonJS output, and writes
+`.commit-sha`. Do not edit `.commit-sha` by hand.
+
+CI runs both checks and fails on skew, and production boots refuse to start on a
+mismatch. Full procedure: **`docs/bindings-upgrade.md`**.

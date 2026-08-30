@@ -8,7 +8,11 @@ import { assertPreflightOrExit } from './config/preflight';
 import config from './config';
 import { createApp as createAppFromFactory } from './app-factory';
 import logger from './utils/logger';
-import { validateVendoredBindings } from './utils/bindings-validator';
+import {
+  formatBindingsReport,
+  resolveBindingsPolicy,
+  validateVendoredBindings,
+} from './utils/bindings-validator';
 import { formatResolvedSorobanConfigForLog, resolveSorobanEnvVars } from './config/env';
 import priceOracle from './services/oracle';
 import websocketService from './services/websocket.service';
@@ -33,26 +37,63 @@ function validateEnv(): void {
   }
 }
 
-function logBindingsValidation(): void {
+/**
+ * Fail fast on vendored-bindings skew.
+ *
+ * A vendor/xelma-bindings that no longer matches bindings.pin.json means the
+ * Soroban client may be calling contract methods that do not exist — a failure
+ * that otherwise only surfaces on a money path under load. Deployments that
+ * actually depend on Soroban refuse to boot; everything else logs an
+ * actionable warning. See resolveBindingsPolicy() and docs/bindings-upgrade.md.
+ */
+function checkVendoredBindings(): void {
+  const policy = resolveBindingsPolicy(process.env);
+  if (policy === 'off') {
+    logger.debug('Vendored bindings check disabled (BINDINGS_CHECK=off)');
+    return;
+  }
+
   const result = validateVendoredBindings();
+  const details = {
+    vendorPath: result.info.vendorPath,
+    packageName: result.info.packageName,
+    commitSha: result.info.commitSha,
+    expectedCommitSha: result.info.expectedCommitSha,
+  };
+
   if (result.ok) {
     logger.info('Vendored bindings OK', {
-      vendorPath: result.info.vendorPath,
-      packageName: result.info.packageName,
-      commitSha: result.info.commitSha,
+      ...details,
+      contractMethodsVerified: result.info.specMethods.length,
     });
-  } else {
-    logger.warn('Vendored bindings validation failed; Soroban integration may fail at runtime', {
-      vendorPath: result.info.vendorPath,
-      errors: result.errors,
-      commitSha: result.info.commitSha,
-    });
+    for (const warning of result.warnings) {
+      logger.warn(`Vendored bindings: ${warning}`, details);
+    }
+    return;
   }
+
+  if (policy === 'strict') {
+    logger.error(
+      'Application startup failed: vendored @tevalabs/xelma-bindings does not match ' +
+        'bindings.pin.json. Refusing to start with a possibly-mismatched contract client.',
+      { ...details, errors: result.errors, remediation: result.remediation },
+    );
+    // Printed unstructured too: the remediation steps must survive whatever
+    // log shipper the deployment uses.
+    process.stderr.write(`${formatBindingsReport(result)}\n`);
+    process.exit(1);
+  }
+
+  logger.warn(
+    'Vendored bindings validation failed; Soroban integration may fail at runtime. ' +
+      'Set BINDINGS_CHECK=strict to make this fatal.',
+    { ...details, errors: result.errors, remediation: result.remediation },
+  );
 }
 
 assertPreflightOrExit();
 validateEnv();
-logBindingsValidation();
+checkVendoredBindings();
 logger.info(`Active DATA_MODE=${config.app.dataMode}`);
 logger.info(`ROUNDS_MOCK_MODE=${config.app.roundsMockMode}`);
 logger.info(
