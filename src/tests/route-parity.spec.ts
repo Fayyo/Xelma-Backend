@@ -41,9 +41,14 @@ jest.mock("../config/preflight", () => ({
 }));
 
 jest.mock("../utils/bindings-validator", () => ({
+  resolveBindingsPolicy: jest.fn(() => "warn"),
+  formatBindingsReport: jest.fn(() => "mock"),
   validateVendoredBindings: jest.fn(() => ({
     ok: true,
-    info: { vendorPath: "mock", packageName: "mock" },
+    errors: [],
+    warnings: [],
+    remediation: [],
+    info: { vendorPath: "mock", packageName: "mock", specMethods: [] },
   })),
 }));
 
