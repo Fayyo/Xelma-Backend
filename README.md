@@ -705,6 +705,12 @@ round IDs, socket IDs, request bodies, and secrets.
 For ready-to-use Prometheus alert rules covering oracle freshness, Soroban RPC,
 and circuit-breaker health, see the [Prometheus alerts cookbook](docs/prometheus-alerts-cookbook.md).
 
+> **Running more than one replica?** Cron jobs elect a single leader per tick
+> via Redis. Every replica must share one `REDIS_URL`, or round creation and
+> oracle resolution will run on all of them at once. See
+> **[docs/multi-instance-deployment.md](docs/multi-instance-deployment.md)**
+> for configuration, lock TTLs, alerts, and Render setup.
+
 Core application metrics include:
 
 | Metric                                 | Labels                           | Meaning                                                                           |
@@ -723,6 +729,11 @@ Core application metrics include:
 | `oracle_resolve_blocked_total`         | `reason`                         | Resolve attempts blocked by oracle safety guards (`stale_price`, `invalid_price`) |
 | `scheduler_runs_total`                 | `job`, `outcome`                 | Scheduler executions                                                              |
 | `scheduler_items_processed_total`      | `job`, `outcome`                 | Items processed by scheduler jobs                                                 |
+| `distributed_lock_acquisitions_total`  | `lock`, `outcome`                | Scheduler leader election: `acquired`, `denied`, `unavailable`, `unlocked`         |
+| `distributed_lock_renewals_total`      | `lock`, `outcome`                | Lock heartbeat renewals: `renewed`, `stolen`, `expired`, `error`                   |
+| `distributed_lock_lost_total`          | `lock`, `reason`                 | Locks lost mid-job: `stolen`, `expired`, `redis_error`, `max_hold_exceeded`        |
+| `distributed_locks_held`               | `lock`                           | Locks currently held by this instance                                             |
+| `distributed_lock_held_seconds`        | `lock`                           | Lock hold duration, for tuning TTLs against real job duration                      |
 | `socket_connections_active`            | none                             | Current Socket.IO connections                                                     |
 | `websocket_emits_total`                | `event`, `outcome`               | WebSocket dispatch attempts                                                       |
 | `websocket_connection_events_total`    | `event`, `authenticated`         | Socket connect/disconnect events                                                  |

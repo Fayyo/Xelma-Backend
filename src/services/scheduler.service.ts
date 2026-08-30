@@ -4,7 +4,11 @@ import notificationService from './notification.service';
 import retentionService from './retention.service';
 import priceOracle from './oracle';
 import logger from '../utils/logger';
-import { withDistributedLock } from '../utils/distributed-lock';
+import {
+   isLockLostError,
+   withDistributedLock,
+   type LockHandle,
+} from '../utils/distributed-lock';
 import { prisma } from '../lib/prisma';
 import { RoundLifecycleOutcome } from '../types/round.types';
 import websocketService from './websocket.service';
@@ -134,11 +138,12 @@ class SchedulerService {
     * Protected by distributed lock to prevent duplicate resolution across instances
     */
    async autoResolveRounds(): Promise<void> {
-      // Use distributed lock to ensure only one instance runs this at a time
+      // Single-leader: the heartbeat holds the 30 s lock for the whole batch,
+      // however many rounds it contains; maxHoldSeconds caps a stuck run.
       await withDistributedLock(
          'auto-resolve-rounds',
-         () => this.autoResolveRoundsInternal(),
-         { ttlSeconds: 30 }
+         lock => this.autoResolveRoundsInternal(lock),
+         { ttlSeconds: 30, maxHoldSeconds: 600 }
       );
    }
 
@@ -146,7 +151,7 @@ class SchedulerService {
     * Internal implementation of auto-resolve
     * Wrapped by autoResolveRounds with distributed lock
     */
-   private async autoResolveRoundsInternal(): Promise<void> {
+   private async autoResolveRoundsInternal(lock: LockHandle): Promise<void> {
       try {
          const now = new Date();
 
@@ -202,6 +207,10 @@ class SchedulerService {
 
          // Resolve each round
          for (const round of expiredRounds) {
+            // Fail closed between rounds — a lost lock means another instance
+            // may already be resolving the rest of this batch.
+            lock.assertHeld();
+
             try {
                const result = await resolutionService.resolveRound(
                   round.id,
@@ -237,6 +246,10 @@ class SchedulerService {
                   });
                }
             } catch (error) {
+               if (isLockLostError(error)) {
+                  throw error;
+               }
+
                logger.error(`Failed to auto-resolve round ${round.id}:`, error);
                schedulerItemsProcessedTotal.inc({
                   job: 'auto_resolve_rounds',
@@ -249,6 +262,18 @@ class SchedulerService {
             outcome: 'success',
          });
       } catch (error) {
+         if (isLockLostError(error)) {
+            logger.warn(
+               'Aborted auto-resolution batch: distributed lock lost',
+               { reason: error.reason }
+            );
+            schedulerRunsTotal.inc({
+               job: 'auto_resolve_rounds',
+               outcome: 'aborted',
+            });
+            return;
+         }
+
          logger.error('Error in auto-resolution scheduler:', error);
          schedulerRunsTotal.inc({
             job: 'auto_resolve_rounds',
@@ -265,8 +290,8 @@ class SchedulerService {
    async cleanupOldNotifications(): Promise<void> {
       await withDistributedLock(
          'cleanup-old-notifications',
-         () => this.cleanupOldNotificationsInternal(),
-         { ttlSeconds: 60 }
+         lock => this.cleanupOldNotificationsInternal(lock),
+         { ttlSeconds: 60, maxHoldSeconds: 900 }
       );
    }
 
@@ -274,12 +299,16 @@ class SchedulerService {
     * Internal implementation of notification cleanup
     * Wrapped by cleanupOldNotifications with distributed lock
     */
-   private async cleanupOldNotificationsInternal(): Promise<void> {
+   private async cleanupOldNotificationsInternal(
+      lock: LockHandle
+   ): Promise<void> {
       const retentionDays = SchedulerService.getRetentionDays();
       logger.info(
          `Notification cleanup started (retention: ${retentionDays} days)`
       );
       try {
+         lock.assertHeld();
+
          const deletedCount =
             await notificationService.cleanupOldNotifications(retentionDays);
          logger.info(
@@ -294,6 +323,17 @@ class SchedulerService {
             outcome: 'success',
          });
       } catch (error) {
+         if (isLockLostError(error)) {
+            logger.warn('Aborted notification cleanup: distributed lock lost', {
+               reason: error.reason,
+            });
+            schedulerRunsTotal.inc({
+               job: 'notification_cleanup',
+               outcome: 'aborted',
+            });
+            return;
+         }
+
          logger.error('Error in notification cleanup scheduler:', error);
          schedulerRunsTotal.inc({
             job: 'notification_cleanup',
@@ -308,10 +348,13 @@ class SchedulerService {
     * @visibleForTesting
     */
    async runRetentionPolicies(): Promise<void> {
+      // TTL trimmed from 120 s to 60 s: with the heartbeat, the TTL only sets
+      // how long a crashed leader blocks the next nightly run, and a long
+      // multi-table sweep no longer needs to fit inside it.
       await withDistributedLock(
          'run-retention-policies',
-         () => this.runRetentionPoliciesInternal(),
-         { ttlSeconds: 120 }
+         lock => this.runRetentionPoliciesInternal(lock),
+         { ttlSeconds: 60, maxHoldSeconds: 1800 }
       );
    }
 
@@ -319,9 +362,10 @@ class SchedulerService {
     * Internal implementation of retention policies
     * Wrapped by runRetentionPolicies with distributed lock
     */
-   private async runRetentionPoliciesInternal(): Promise<void> {
+   private async runRetentionPoliciesInternal(lock: LockHandle): Promise<void> {
       try {
          logger.info('Starting scheduled retention policy execution');
+         lock.assertHeld();
          const results = await retentionService.runAllPolicies();
 
          // Log summary
@@ -341,6 +385,17 @@ class SchedulerService {
             outcome: 'success',
          });
       } catch (error) {
+         if (isLockLostError(error)) {
+            logger.warn('Aborted retention policies: distributed lock lost', {
+               reason: error.reason,
+            });
+            schedulerRunsTotal.inc({
+               job: 'retention_policies',
+               outcome: 'aborted',
+            });
+            return;
+         }
+
          logger.error('Error in retention policy scheduler:', error);
          schedulerRunsTotal.inc({
             job: 'retention_policies',
@@ -410,18 +465,28 @@ betAccepted: async (payload) => {
    async pollOutbox(): Promise<void> {
       await withDistributedLock(
          'outbox-poll',
-         () => this.pollOutboxInternal(),
-         { ttlSeconds: getOutboxPollIntervalSeconds() + 5 }
+         lock => this.pollOutboxInternal(lock),
+         {
+            ttlSeconds: getOutboxPollIntervalSeconds() + 5,
+            maxHoldSeconds: 300,
+         }
       );
    }
 
-   private async pollOutboxInternal(): Promise<void> {
+   private async pollOutboxInternal(lock: LockHandle): Promise<void> {
       try {
+         lock.assertHeld();
          const result = await outboxService.processOutbox(this.buildOutboxHandlers());
          if (result.processed > 0 || result.failed > 0) {
             logger.info('Outbox poll completed', result);
          }
       } catch (error) {
+         if (isLockLostError(error)) {
+            logger.warn('Aborted outbox poll: distributed lock lost', {
+               reason: error.reason,
+            });
+            return;
+         }
          logger.error('Error in outbox poller:', error);
       }
    }
@@ -433,18 +498,25 @@ betAccepted: async (payload) => {
    async cleanupOutbox(): Promise<void> {
       await withDistributedLock(
          'outbox-cleanup',
-         () => this.cleanupOutboxInternal(),
-         { ttlSeconds: 60 }
+         lock => this.cleanupOutboxInternal(lock),
+         { ttlSeconds: 60, maxHoldSeconds: 900 }
       );
    }
 
-private async cleanupOutboxInternal(): Promise<void> {
+private async cleanupOutboxInternal(lock: LockHandle): Promise<void> {
        try {
+          lock.assertHeld();
           const count = await outboxService.cleanupProcessed();
           if (count > 0) {
              logger.info(`Outbox cleanup: removed ${count} processed event(s)`);
           }
        } catch (error) {
+          if (isLockLostError(error)) {
+             logger.warn('Aborted outbox cleanup: distributed lock lost', {
+                reason: error.reason,
+             });
+             return;
+          }
           logger.error('Error in outbox cleanup scheduler:', error);
        }
     }
@@ -457,13 +529,14 @@ private async cleanupOutboxInternal(): Promise<void> {
     async reconcileBets(): Promise<void> {
        await withDistributedLock(
           'reconcile-bets',
-          () => this.reconcileBetsInternal(),
-          { ttlSeconds: 70 }
+          lock => this.reconcileBetsInternal(lock),
+          { ttlSeconds: 70, maxHoldSeconds: 600 }
        );
     }
 
-    private async reconcileBetsInternal(): Promise<void> {
+    private async reconcileBetsInternal(lock: LockHandle): Promise<void> {
        try {
+          lock.assertHeld();
           const result = await reconciliationService.reconcileSubmittedBets();
           if (result.checked > 0) {
              logger.info('Bet reconciliation completed', result);
@@ -480,6 +553,17 @@ private async cleanupOutboxInternal(): Promise<void> {
              outcome: result.errors > 0 ? 'failure' : 'success',
           });
        } catch (error) {
+          if (isLockLostError(error)) {
+             logger.warn('Aborted bet reconciliation: distributed lock lost', {
+                reason: error.reason,
+             });
+             schedulerRunsTotal.inc({
+                job: 'bet_reconciliation',
+                outcome: 'aborted',
+             });
+             return;
+          }
+
           logger.error('Error in bet reconciliation scheduler:', error);
           schedulerRunsTotal.inc({
              job: 'bet_reconciliation',

@@ -23,6 +23,9 @@ wallet addresses, user IDs, round IDs, request bodies, or secrets.
 | `circuit_breaker_state` | `breaker`, `state` | One-hot current breaker state (`closed`, `open`, `half-open`) |
 | `circuit_breaker_state_changes_total` | `breaker`, `from_state`, `to_state`, `reason` | Breaker transitions |
 
+Scheduler leader-election metrics (`distributed_lock_*`) and their alert rules
+live in [multi-instance-deployment.md](./multi-instance-deployment.md).
+
 ## Example alert rules
 
 Save the following as `xelma-alerts.yaml` and load it through your Prometheus

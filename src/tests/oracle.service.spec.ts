@@ -47,9 +47,9 @@ jest.mock('node-cron', () => ({
   },
 }));
 
-jest.mock('../utils/distributed-lock', () => ({
-  withDistributedLock: async (_name: string, fn: () => Promise<any>) => fn(),
-}));
+jest.mock('../utils/distributed-lock', () =>
+  require('./helpers/distributed-lock.mock').passThroughLockModule(),
+);
 
 import oracleService from '../services/oracle.service';
 import { oracleResolveBlockedTotal } from '../metrics/application.metrics';
