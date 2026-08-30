@@ -239,3 +239,22 @@ for your current workflow.
 - **`.env.hackathon.example`** — Minimal template for hackathon/demo mode (mock data, no DB).
 
 Both files are in the repository root and include these flags with inline comments.
+
+---
+
+## Docker Deployment Profiles & Soroban Bindings
+
+The multi-stage `Dockerfile` packages both full production (with live Soroban contracts and database migrations) and lightweight hackathon/API-only deployment profiles.
+
+### Vendored Bindings & Dependency Resolution
+- The dependency `@tevalabs/xelma-bindings` is declared via `"file:vendor/xelma-bindings"`.
+- The `Dockerfile` explicitly copies `./vendor` in both `deps` and `runner` stages to guarantee offline/container build resolution.
+- `docker/entrypoint.sh` executes `scripts/install-bindings.js --check` when `DATA_MODE=live` or `BET_STUB_MODE=false` before booting the API server.
+
+### Container Profiles
+| Profile | Environment Configuration | Entrypoint Behavior |
+|---|---|---|
+| **Full Production (Live)** | `DATA_MODE=live`, `BET_STUB_MODE=false`, `API_MODE=full` | Verifies Soroban bindings, applies Prisma migrations, and boots full app `dist/index.js`. |
+| **Demo / Hackathon** | `DATA_MODE=mock`, `API_MODE=hackathon`, `RUN_MIGRATIONS=false` | Boots lightweight mock demo server `dist/server.js` without requiring external database or Soroban keys. |
+| **API Only** | `API_ONLY=true`, `BET_STUB_MODE=true` | Boots standard API server without running background schedulers or oracle loops. |
+

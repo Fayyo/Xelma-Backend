@@ -3,6 +3,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci
 
 FROM deps AS build
@@ -15,8 +16,10 @@ RUN npm run build
 FROM base AS runner
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --omit=dev && npm install prisma@^5.8.0 --no-save
 COPY prisma ./prisma
+COPY scripts ./scripts
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
 COPY docker/entrypoint.sh /entrypoint.sh
