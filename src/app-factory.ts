@@ -277,6 +277,10 @@ function mountApiRoutes(
   // response shapes (raw snapshot vs. success envelope), so the router is
   // mode-specific like rounds and leaderboard above.
   target.use('/', mode === 'full' ? pricesRoutes : indexRoutes);
+
+  if (features.legacyPriceEndpoint) {
+    target.use('/', legacyXlmPriceRouter);
+  }
 }
 
 /**
@@ -322,13 +326,6 @@ export function createApp(options: CreateAppOptions = {}): Application {
     app.use('/api/v1', v1Router);
   }
 
-  const apiRouter = Router();
-  if (mode === 'hackathon') {
-    apiRouter.use('/', healthRoutes);
-  }
-  mountApiRoutes(apiRouter, mode, features);
-  app.use('/api', apiRouter);
-
   if (features.deprecationHeaders) {
     app.use('/api', (req: Request, res: Response, next: NextFunction) => {
       if (!req.path.startsWith('/v1')) {
@@ -339,6 +336,13 @@ export function createApp(options: CreateAppOptions = {}): Application {
       next();
     });
   }
+
+  const apiRouter = Router();
+  if (mode === 'hackathon') {
+    apiRouter.use('/', healthRoutes);
+  }
+  mountApiRoutes(apiRouter, mode, features);
+  app.use('/api', apiRouter);
 
   if (mode === 'full') {
     app.use('/metrics', metricsRoutes);
@@ -355,12 +359,6 @@ export function createApp(options: CreateAppOptions = {}): Application {
           status: 'OK',
         });
       });
-    }
-
-    if (features.legacyPriceEndpoint) {
-      // Owned by src/routes/prices.ts alongside /api/prices, so the two
-      // contracts stay documented in one file (#394).
-      app.use('/api', legacyXlmPriceRouter);
     }
   }
 
