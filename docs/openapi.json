@@ -915,20 +915,6 @@
         }
       }
     },
-    "/api/rounds/active": {
-      "get": {
-        "summary": "Get active rounds",
-        "description": "Returns active rounds. Delegates to shared round service with fallback chain.",
-        "tags": [
-          "rounds"
-        ],
-        "responses": {
-          "200": {
-            "description": "Active rounds"
-          }
-        }
-      }
-    },
     "/api/rounds/{id}": {
       "get": {
         "summary": "Get a round by ID",
@@ -1017,15 +1003,21 @@
     "/api/rounds/{id}/simulate": {
       "post": {
         "summary": "Simulate a round resolution (Non-Production QA Endpoint)",
-        "description": "Simulates payout distribution without placing real bets or mutating the round. Disabled in production unless ENABLE_SIMULATION=true.",
+        "description": "Simulates payout distribution for a round WITHOUT placing real bets or mutating the round. This is a QA/admin-only endpoint and must not be enabled on production builds. It is gated by the ENABLE_SIMULATION environment variable (default: false): when the flag is off the route returns 403 in EVERY environment, including development and test. When the flag is on, the caller must present an ADMIN bearer token (`Authorization: Bearer <JWT>`).\n",
         "tags": [
           "rounds"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ],
         "parameters": [
           {
             "in": "path",
             "name": "id",
             "required": true,
+            "description": "Round ID to simulate",
             "schema": {
               "type": "string"
             }
@@ -1039,7 +1031,8 @@
                 "type": "object",
                 "properties": {
                   "finalPrice": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Hypothetical final price used to compute winners"
                   }
                 },
                 "required": [
@@ -1051,13 +1044,111 @@
         },
         "responses": {
           "200": {
-            "description": "Simulation results"
+            "description": "Simulation results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "roundId": {
+                      "type": "string"
+                    },
+                    "simulatedPrice": {
+                      "type": "number"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "UP_DOWN",
+                        "LEGENDS"
+                      ]
+                    },
+                    "startPrice": {
+                      "type": "number"
+                    },
+                    "winningSide": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "UP",
+                        "DOWN"
+                      ]
+                    },
+                    "winningRange": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "min": {
+                          "type": "number"
+                        },
+                        "max": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "predictions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "won": {
+                            "type": "boolean",
+                            "nullable": true
+                          },
+                          "payout": {
+                            "type": "number"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "side": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "UP",
+                              "DOWN"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "totalPredictions": {
+                          "type": "integer"
+                        },
+                        "winners": {
+                          "type": "integer"
+                        },
+                        "losers": {
+                          "type": "integer"
+                        },
+                        "refunded": {
+                          "type": "integer"
+                        },
+                        "totalPayout": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
-            "description": "Validation error"
+            "description": "Validation error - finalPrice missing"
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid bearer token"
           },
           "403": {
-            "description": "Disabled in production"
+            "description": "Forbidden - simulation disabled (ENABLE_SIMULATION=false) or caller is not an admin"
           },
           "404": {
             "description": "Round not found"
@@ -2509,6 +2600,65 @@
           {
             "lang": "cURL",
             "source": "curl -X POST \"$API_BASE_URL/api/auth/connect\" \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\"walletAddress\":\"GB3JDWCQWJ5VQJ3H6E6GQGZVFKU4ZQXGJ6S4Q2W7S6ZJ5R2YQH2B7ZQX\",\"challenge\":\"random-challenge-string\",\"signature\":\"base64-or-hex-signature\"}'\n"
+          }
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Refresh JWT access token",
+        "description": "Re-issues a fresh JWT token for an authenticated user without requiring a full wallet signature challenge.\nExpects Authorization header `Bearer <token>` or request body `{ token: \"<token>\" }`.\n",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "Existing JWT token to refresh (if not sent in Authorization header)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token successfully refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConnectResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed or expired token",
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "Authentication Error",
+                  "message": "Invalid or expired token"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "cURL",
+            "source": "curl -X POST \"$API_BASE_URL/api/auth/refresh\" \\\n  -H \"Authorization: Bearer YOUR_EXPIRED_OR_CURRENT_JWT\"\n"
           }
         ]
       }
