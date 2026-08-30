@@ -48,6 +48,9 @@ const integrationTestFiles = [
   "redis-adapter.spec.ts",
 ];
 
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Base configuration shared between unit and integration tests
 const baseConfig: Partial<JestConfig> = {
   preset: "ts-jest",
@@ -78,8 +81,13 @@ const unitConfig: JestConfig = {
   ],
   testPathIgnorePatterns: [
     "/node_modules/",
-    // Integration test files (DB, HTTP listener, or cross-service tests)
-    ...integrationTestFiles,
+    // Integration test files (DB, HTTP listener, or cross-service tests).
+    // Anchored on the path separator so a bare basename such as
+    // "bets.routes.spec.ts" cannot also swallow "hackathon-bets.routes.spec.ts",
+    // which would leave that suite matched by neither project and never run.
+    ...integrationTestFiles.map(
+      (file) => `[\\/]${escapeRegExp(file)}$`,
+    ),
   ],
   setupFiles: ["<rootDir>/jest.setup.js"],
 };
